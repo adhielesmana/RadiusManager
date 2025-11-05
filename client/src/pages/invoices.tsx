@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Plus, Search, Download, Eye, DollarSign, CreditCard, History } from "lucide-react";
 import type { Invoice } from "@shared/schema";
 import { InvoiceDialog } from "@/components/invoice-dialog";
+import { InvoiceDetailDialog } from "@/components/invoice-detail-dialog";
 import { PaymentDialog } from "@/components/payment-dialog";
 import { PaymentHistoryDialog } from "@/components/payment-history-dialog";
 import { useCurrency } from "@/hooks/use-currency";
@@ -17,6 +18,7 @@ export default function Invoices() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
+  const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice & { customerName: string; profileName?: string } | null>(null);
 
   const { data: invoices = [], isLoading } = useQuery<(Invoice & { customerName: string; profileName?: string })[]>({
@@ -124,10 +126,26 @@ export default function Invoices() {
                           >
                             <History className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" data-testid={`button-view-invoice-${invoice.id}`}>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => {
+                              setSelectedInvoice(invoice);
+                              setInvoiceDetailOpen(true);
+                            }}
+                            data-testid={`button-view-invoice-${invoice.id}`}
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" data-testid={`button-download-invoice-${invoice.id}`}>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => {
+                              setSelectedInvoice(invoice);
+                              setInvoiceDetailOpen(true);
+                            }}
+                            data-testid={`button-download-invoice-${invoice.id}`}
+                          >
                             <Download className="h-4 w-4" />
                           </Button>
                         </div>
@@ -149,6 +167,13 @@ export default function Invoices() {
         invoiceId={selectedInvoice?.id}
         invoiceNumber={selectedInvoice?.invoiceNumber}
       />
+      {selectedInvoice && (
+        <InvoiceDetailDialog
+          open={invoiceDetailOpen}
+          onOpenChange={setInvoiceDetailOpen}
+          invoice={selectedInvoice}
+        />
+      )}
     </div>
   );
 }
