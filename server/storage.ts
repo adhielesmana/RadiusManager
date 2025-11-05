@@ -3,6 +3,7 @@ import { db } from "./db";
 import { eq, desc, gte, lte, sql, and } from "drizzle-orm";
 import {
   customers,
+  subscriptions,
   profiles,
   invoices,
   payments,
@@ -14,6 +15,8 @@ import {
   radgroupreply,
   type Customer,
   type InsertCustomer,
+  type Subscription,
+  type InsertSubscription,
   type Profile,
   type InsertProfile,
   type Invoice,
@@ -31,7 +34,14 @@ export interface IStorage {
   getCustomer(id: number): Promise<Customer | undefined>;
   createCustomer(customer: InsertCustomer): Promise<Customer>;
   updateCustomer(id: number, customer: Partial<InsertCustomer>): Promise<Customer | undefined>;
-  getExpiringCustomers(): Promise<Customer[]>;
+  
+  // Subscription operations
+  getSubscriptions(): Promise<Subscription[]>;
+  getSubscription(id: number): Promise<Subscription | undefined>;
+  getCustomerSubscriptions(customerId: number): Promise<Subscription[]>;
+  createSubscription(subscription: InsertSubscription): Promise<Subscription>;
+  updateSubscription(id: number, subscription: Partial<InsertSubscription>): Promise<Subscription | undefined>;
+  getExpiringSubscriptions(): Promise<Subscription[]>;
   
   // Profile operations
   getProfiles(): Promise<Profile[]>;
@@ -69,7 +79,7 @@ export interface IStorage {
   logActivity(log: InsertActivityLog): Promise<void>;
   
   // RADIUS operations
-  syncCustomerToRadius(customer: Customer): Promise<void>;
+  syncSubscriptionToRadius(subscription: Subscription, customer: Customer): Promise<void>;
   syncProfileToRadiusGroup(profile: Profile): Promise<void>;
 }
 
@@ -92,8 +102,8 @@ export class DatabaseStorage implements IStorage {
       .values(customerData)
       .returning();
     
-    // Sync to RADIUS with password
-    await this.syncCustomerToRadius(customer, password);
+    // Sync credentials to RADIUS
+    await this.syncCustomerCredentials(customer, password);
     
     // Log activity
     await this.logActivity({
@@ -116,8 +126,8 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     if (customer) {
-      // Sync to RADIUS (with password if provided)
-      await this.syncCustomerToRadius(customer, password);
+      // Sync credentials to RADIUS (with password if provided)
+      await this.syncCustomerCredentials(customer, password);
       
       // Log activity
       await this.logActivity({
@@ -130,20 +140,84 @@ export class DatabaseStorage implements IStorage {
     return customer || undefined;
   }
 
-  async getExpiringCustomers(): Promise<Customer[]> {
+  async getSubscriptions(): Promise<Subscription[]> {
+    return await db.select().from(subscriptions).orderBy(desc(subscriptions.createdAt));
+  }
+
+  async getSubscription(id: number): Promise<Subscription | undefined> {
+    const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
+    return subscription || undefined;
+  }
+
+  async getCustomerSubscriptions(customerId: number): Promise<Subscription[]> {
+    return await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.customerId, customerId))
+      .orderBy(desc(subscriptions.createdAt));
+  }
+
+  async createSubscription(insertSubscription: InsertSubscription): Promise<Subscription> {
+    const [subscription] = await db
+      .insert(subscriptions)
+      .values(insertSubscription)
+      .returning();
+    
+    // Get customer for RADIUS sync
+    const customer = await this.getCustomer(subscription.customerId);
+    if (customer) {
+      await this.syncSubscriptionToRadius(subscription, customer);
+    }
+    
+    // Log activity
+    await this.logActivity({
+      customerId: subscription.customerId,
+      action: "subscription_created",
+      description: `Subscription created at ${subscription.installationAddress}`,
+    });
+    
+    return subscription;
+  }
+
+  async updateSubscription(id: number, data: Partial<InsertSubscription>): Promise<Subscription | undefined> {
+    const [subscription] = await db
+      .update(subscriptions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(subscriptions.id, id))
+      .returning();
+    
+    if (subscription) {
+      // Get customer for RADIUS sync
+      const customer = await this.getCustomer(subscription.customerId);
+      if (customer) {
+        await this.syncSubscriptionToRadius(subscription, customer);
+      }
+      
+      // Log activity
+      await this.logActivity({
+        customerId: subscription.customerId,
+        action: "subscription_updated",
+        description: `Subscription updated at ${subscription.installationAddress}`,
+      });
+    }
+    
+    return subscription || undefined;
+  }
+
+  async getExpiringSubscriptions(): Promise<Subscription[]> {
     const sevenDaysFromNow = new Date();
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
     
     return await db
       .select()
-      .from(customers)
+      .from(subscriptions)
       .where(
         and(
-          lte(customers.expiryDate, sevenDaysFromNow),
-          gte(customers.expiryDate, new Date())
+          lte(subscriptions.expiryDate, sevenDaysFromNow),
+          gte(subscriptions.expiryDate, new Date())
         )
       )
-      .orderBy(customers.expiryDate)
+      .orderBy(subscriptions.expiryDate)
       .limit(5);
   }
 
@@ -360,11 +434,11 @@ export class DatabaseStorage implements IStorage {
     
     const [expiringAccountsResult] = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(customers)
+      .from(subscriptions)
       .where(
         and(
-          lte(customers.expiryDate, sevenDaysFromNow),
-          gte(customers.expiryDate, new Date())
+          lte(subscriptions.expiryDate, sevenDaysFromNow),
+          gte(subscriptions.expiryDate, new Date())
         )
       );
     
@@ -381,8 +455,8 @@ export class DatabaseStorage implements IStorage {
     await db.insert(activityLogs).values(log);
   }
 
-  // RADIUS Integration
-  async syncCustomerToRadius(customer: Customer, password?: string): Promise<void> {
+  // RADIUS Integration - Customer Credentials
+  async syncCustomerCredentials(customer: Customer, password?: string): Promise<void> {
     // Fetch existing password BEFORE deleting (to preserve it if no new password provided)
     let existingPasswordValue: string | null = null;
     if (!password) {
@@ -398,10 +472,15 @@ export class DatabaseStorage implements IStorage {
       existingPasswordValue = existingPassword?.value || null;
     }
     
-    // Remove existing entries
-    await db.delete(radcheck).where(eq(radcheck.username, customer.username));
-    await db.delete(radreply).where(eq(radreply.username, customer.username));
-    await db.delete(radusergroup).where(eq(radusergroup.username, customer.username));
+    // Remove existing credential entries (password and auth-type only)
+    await db
+      .delete(radcheck)
+      .where(
+        and(
+          eq(radcheck.username, customer.username),
+          sql`attribute IN ('Cleartext-Password', 'Auth-Type')`
+        )
+      );
     
     // Add password authentication
     const passwordToUse = password || existingPasswordValue;
@@ -414,28 +493,6 @@ export class DatabaseStorage implements IStorage {
       });
     }
     
-    // Add MAC address authentication if provided
-    if (customer.macAddress) {
-      await db.insert(radcheck).values({
-        username: customer.username,
-        attribute: "Calling-Station-Id",
-        op: "==",
-        value: customer.macAddress,
-      });
-    }
-    
-    // Map user to profile group if assigned
-    if (customer.profileId) {
-      const profile = await this.getProfile(customer.profileId);
-      if (profile) {
-        await db.insert(radusergroup).values({
-          username: customer.username,
-          groupname: `profile_${profile.id}`,
-          priority: 1,
-        });
-      }
-    }
-    
     // Add status-based restrictions
     if (customer.status !== 'active') {
       await db.insert(radcheck).values({
@@ -443,6 +500,63 @@ export class DatabaseStorage implements IStorage {
         attribute: "Auth-Type",
         op: ":=",
         value: "Reject",
+      });
+    }
+  }
+
+  // RADIUS Integration - Subscription to RADIUS
+  async syncSubscriptionToRadius(subscription: Subscription, customer: Customer): Promise<void> {
+    // Clean up old subscription-specific RADIUS entries for this user
+    // Remove MAC address check entries
+    await db
+      .delete(radcheck)
+      .where(
+        and(
+          eq(radcheck.username, customer.username),
+          eq(radcheck.attribute, "Calling-Station-Id")
+        )
+      );
+    
+    // Remove IP address reply entries
+    await db
+      .delete(radreply)
+      .where(
+        and(
+          eq(radreply.username, customer.username),
+          eq(radreply.attribute, "Framed-IP-Address")
+        )
+      );
+    
+    // Remove profile group mappings
+    await db.delete(radusergroup).where(eq(radusergroup.username, customer.username));
+    
+    // Add MAC address authentication if provided
+    if (subscription.macAddress) {
+      await db.insert(radcheck).values({
+        username: customer.username,
+        attribute: "Calling-Station-Id",
+        op: "==",
+        value: subscription.macAddress,
+      });
+    }
+    
+    // Add static IP address if provided
+    if (subscription.ipAddress) {
+      await db.insert(radreply).values({
+        username: customer.username,
+        attribute: "Framed-IP-Address",
+        op: "=",
+        value: subscription.ipAddress,
+      });
+    }
+    
+    // Map user to profile group
+    const profile = await this.getProfile(subscription.profileId);
+    if (profile) {
+      await db.insert(radusergroup).values({
+        username: customer.username,
+        groupname: `profile_${profile.id}`,
+        priority: 1,
       });
     }
   }

@@ -1,9 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema } from "@shared/schema";
+import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema } from "@shared/schema";
 import { db } from "./db";
-import { customers, profiles, invoices, tickets } from "@shared/schema";
+import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -21,17 +21,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/customers", async (_req, res) => {
     try {
       const allCustomers = await storage.getCustomers();
-      // Join with profiles to get profile names
-      const customersWithProfiles = await Promise.all(
-        allCustomers.map(async (customer) => {
-          if (customer.profileId) {
-            const profile = await storage.getProfile(customer.profileId);
-            return { ...customer, profileName: profile?.name };
-          }
-          return customer;
-        })
-      );
-      res.json(customersWithProfiles);
+      res.json(allCustomers);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -39,8 +29,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/customers/expiring", async (_req, res) => {
     try {
-      const expiringCustomers = await storage.getExpiringCustomers();
-      res.json(expiringCustomers);
+      const expiringSubscriptions = await storage.getExpiringSubscriptions();
+      res.json(expiringSubscriptions);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -62,17 +52,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/customers", async (req, res) => {
     try {
       const validatedData = insertCustomerSchema.parse(req.body);
-      
-      // Calculate expiry date if profile is assigned
-      if (validatedData.profileId) {
-        const profile = await storage.getProfile(validatedData.profileId);
-        if (profile) {
-          const expiryDate = new Date();
-          expiryDate.setDate(expiryDate.getDate() + profile.validityDays);
-          validatedData.expiryDate = expiryDate;
-        }
-      }
-      
       const customer = await storage.createCustomer(validatedData);
       res.status(201).json(customer);
     } catch (error: any) {
@@ -84,8 +63,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const validatedData = insertCustomerSchema.partial().parse(req.body);
+      const customer = await storage.updateCustomer(id, validatedData);
+      if (!customer) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+      res.json(customer);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Subscriptions Endpoints
+  app.get("/api/subscriptions", async (_req, res) => {
+    try {
+      const allSubscriptions = await storage.getSubscriptions();
+      res.json(allSubscriptions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/subscriptions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const subscription = await storage.getSubscription(id);
+      if (!subscription) {
+        return res.status(404).json({ error: "Subscription not found" });
+      }
+      res.json(subscription);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/subscriptions/customer/:customerId", async (req, res) => {
+    try {
+      const customerId = parseInt(req.params.customerId);
+      const subscriptions = await storage.getCustomerSubscriptions(customerId);
+      res.json(subscriptions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/subscriptions", async (req, res) => {
+    try {
+      const validatedData = insertSubscriptionSchema.parse(req.body);
       
-      // Calculate expiry date if profile is changed
+      // Calculate expiry date based on profile validity
       if (validatedData.profileId) {
         const profile = await storage.getProfile(validatedData.profileId);
         if (profile) {
@@ -95,11 +120,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      const customer = await storage.updateCustomer(id, validatedData);
-      if (!customer) {
-        return res.status(404).json({ error: "Customer not found" });
+      const subscription = await storage.createSubscription(validatedData);
+      res.status(201).json(subscription);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/subscriptions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertSubscriptionSchema.partial().parse(req.body);
+      
+      // Calculate new expiry date if profile is changed
+      if (validatedData.profileId) {
+        const profile = await storage.getProfile(validatedData.profileId);
+        if (profile) {
+          const expiryDate = new Date();
+          expiryDate.setDate(expiryDate.getDate() + profile.validityDays);
+          validatedData.expiryDate = expiryDate;
+        }
       }
-      res.json(customer);
+      
+      const subscription = await storage.updateSubscription(id, validatedData);
+      if (!subscription) {
+        return res.status(404).json({ error: "Subscription not found" });
+      }
+      res.json(subscription);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -156,15 +203,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/invoices", async (_req, res) => {
     try {
       const allInvoices = await storage.getInvoices();
-      // Join with customers and profiles
+      // Join with customers and subscriptions/profiles
       const invoicesWithDetails = await Promise.all(
         allInvoices.map(async (invoice) => {
           const customer = await storage.getCustomer(invoice.customerId);
-          const profile = invoice.profileId ? await storage.getProfile(invoice.profileId) : null;
+          let profileName = null;
+          if (invoice.subscriptionId) {
+            const subscription = await storage.getSubscription(invoice.subscriptionId);
+            if (subscription) {
+              const profile = await storage.getProfile(subscription.profileId);
+              profileName = profile?.name;
+            }
+          }
           return {
             ...invoice,
             customerName: customer?.fullName || 'Unknown',
-            profileName: profile?.name,
+            profileName,
           };
         })
       );
