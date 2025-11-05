@@ -1,5 +1,7 @@
 import { Home, Users, Gauge, FileText, Ticket, Settings } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import type { Settings as SettingsType } from "@shared/schema";
 import {
   Sidebar,
   SidebarContent,
@@ -47,14 +49,26 @@ const menuItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { data: settings } = useQuery<SettingsType>({
+    queryKey: ['/api/settings'],
+  });
 
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-            <Gauge className="h-5 w-5 text-primary-foreground" />
-          </div>
+          {settings?.logoUrl ? (
+            <img 
+              src={settings.logoUrl} 
+              alt="Company logo" 
+              className="h-8 w-8 object-contain rounded-md"
+              data-testid="img-sidebar-logo"
+            />
+          ) : (
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+              <Gauge className="h-5 w-5 text-primary-foreground" />
+            </div>
+          )}
           <div>
             <h1 className="text-base font-semibold text-sidebar-foreground">ISP Manager</h1>
             <p className="text-xs text-muted-foreground">Network Control</p>
