@@ -1,0 +1,106 @@
+# ISP Manager - FreeRADIUS Customer Management System
+
+## Overview
+Professional ISP management system with FreeRADIUS integration for customer authentication, billing, service profiles, and support ticketing.
+
+## Features
+- **Dashboard**: Real-time metrics showing total customers, active users, revenue, and pending tickets
+- **Customer Management**: Complete CRUD operations with authentication details, contact info, and installation data
+- **Service Profiles**: Speed plans with quotas, FUP settings, validity periods, and pricing
+- **Invoice Generation**: Professional billing with payment status tracking
+- **Ticketing System**: Support ticket management with priority levels and status tracking
+- **FreeRADIUS Integration**: Full RADIUS authentication with user and group attributes
+- **Activity Logging**: Complete audit trail of customer changes
+- **Status Management**: Automatic customer status updates (Active/Suspended/Expired)
+
+## Technology Stack
+- **Frontend**: React, TypeScript, Tailwind CSS, Shadcn UI
+- **Backend**: Express.js, Node.js
+- **Database**: PostgreSQL with Drizzle ORM
+- **Authentication**: FreeRADIUS integration (radcheck, radreply, radgroupcheck, radgroupreply)
+- **State Management**: TanStack Query (React Query)
+
+## Project Structure
+```
+├── client/                  # Frontend React application
+│   ├── src/
+│   │   ├── components/      # Reusable UI components
+│   │   │   ├── app-sidebar.tsx
+│   │   │   ├── customer-dialog.tsx
+│   │   │   ├── profile-dialog.tsx
+│   │   │   ├── ticket-dialog.tsx
+│   │   │   ├── status-badge.tsx
+│   │   │   └── metric-card.tsx
+│   │   ├── pages/          # Page components
+│   │   │   ├── dashboard.tsx
+│   │   │   ├── customers.tsx
+│   │   │   ├── profiles.tsx
+│   │   │   ├── invoices.tsx
+│   │   │   ├── tickets.tsx
+│   │   │   └── settings.tsx
+│   │   └── App.tsx         # Main app with routing
+├── server/                 # Backend Express server
+│   ├── db.ts              # Database connection
+│   ├── storage.ts         # Data access layer
+│   └── routes.ts          # API endpoints
+├── shared/                # Shared types and schemas
+│   └── schema.ts          # Drizzle schemas and types
+└── design_guidelines.md   # UI/UX design specifications
+
+## Database Schema
+
+### Core Tables
+- **customers**: Customer information with authentication and contact details
+- **profiles**: Service plans with speed, quota, FUP, and pricing
+- **invoices**: Billing records with payment status
+- **tickets**: Support tickets with priority and status tracking
+- **activityLogs**: Audit trail of all customer changes
+
+### FreeRADIUS Tables
+- **radcheck**: User authentication attributes (username/password, MAC address)
+- **radreply**: User-specific RADIUS reply attributes
+- **radgroupcheck**: Group authentication attributes
+- **radgroupreply**: Group reply attributes (speed limits, quotas)
+- **radusergroup**: User to group mapping
+
+## API Endpoints (Planned)
+- `GET /api/dashboard/stats` - Dashboard metrics
+- `GET /api/customers` - List all customers
+- `POST /api/customers` - Create customer
+- `PATCH /api/customers/:id` - Update customer
+- `GET /api/profiles` - List service profiles
+- `POST /api/profiles` - Create profile
+- `GET /api/invoices` - List invoices
+- `POST /api/invoices` - Generate invoice
+- `GET /api/tickets` - List tickets
+- `POST /api/tickets` - Create ticket
+
+## Development
+
+### Setup
+```bash
+npm install
+npm run db:push
+npm run dev
+```
+
+### Database Migrations
+```bash
+npm run db:push
+```
+
+## Design System
+- Color Scheme: Professional blue palette with semantic status colors
+- Typography: Inter for UI, JetBrains Mono for technical data
+- Components: Shadcn UI with custom ISP-specific components
+- Layout: Sidebar navigation with responsive data tables
+
+## Status Indicators
+- **Customer Status**: Active (green), Suspended (orange), Expired (red)
+- **Payment Status**: Paid (green), Pending (yellow), Overdue (red)
+- **Ticket Status**: Open (blue), In Progress (purple), Resolved (green), Closed (gray)
+- **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
+
+## Recent Changes
+- 2025-01-05: Initial project setup with complete frontend implementation
+- 2025-01-05: Database schema created for ISP management and FreeRADIUS integration
