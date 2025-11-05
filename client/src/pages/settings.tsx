@@ -98,17 +98,32 @@ export default function Settings() {
               {logoUrl && (
                 <div className="space-y-2">
                   <Label>Logo Preview</Label>
-                  <div className="flex items-center gap-4 rounded-md border border-border p-4">
-                    <img 
-                      src={logoUrl} 
-                      alt="Company logo preview" 
-                      className="h-12 w-12 object-contain"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                      data-testid="img-logo-preview"
-                    />
-                    <span className="text-sm text-muted-foreground">Your logo will appear like this</span>
+                  <div className="flex items-center gap-4 rounded-md border border-border p-4 bg-muted/30">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-md border border-border bg-background">
+                      <img 
+                        src={logoUrl} 
+                        alt="Company logo preview" 
+                        className="max-h-14 max-w-14 object-contain"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          target.style.display = 'none';
+                          const errorMsg = target.nextElementSibling as HTMLElement;
+                          if (errorMsg) errorMsg.style.display = 'block';
+                        }}
+                        onLoad={(e) => {
+                          const target = e.currentTarget;
+                          target.style.display = 'block';
+                          const errorMsg = target.nextElementSibling as HTMLElement;
+                          if (errorMsg) errorMsg.style.display = 'none';
+                        }}
+                        data-testid="img-logo-preview"
+                      />
+                      <span className="hidden text-xs text-destructive text-center px-2">Failed to load</span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Preview</p>
+                      <p className="text-xs text-muted-foreground">This logo will appear in the sidebar and on invoices</p>
+                    </div>
                   </div>
                 </div>
               )}
