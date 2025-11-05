@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1762338598138,
+      "tag": "0000_add_subscriptions_refactor",
+      "breakpoints": true
+    }
+  ]
+}

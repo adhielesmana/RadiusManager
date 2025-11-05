@@ -49,18 +49,29 @@ Professional ISP management system with FreeRADIUS integration for customer auth
 
 ## Database Schema
 
+### Core Business Logic
+**One customer (unique by national ID) can have multiple subscriptions at different locations.**
+
 ### Core Tables
-- **customers**: Customer information with authentication and contact details
+- **customers**: Customer information (unique by nationalId). No direct link to profiles - customers have subscriptions instead
+- **subscriptions**: Links customers to service profiles at specific locations. Includes optional static IP assignment and MAC address binding
 - **profiles**: Service plans with speed, quota, FUP, and pricing
-- **invoices**: Billing records with payment status
+- **invoices**: Billing records linked to specific subscriptions (not just customers)
+- **payments**: Payment records against invoices with automatic status updates
 - **tickets**: Support tickets with priority and status tracking
 - **activityLogs**: Audit trail of all customer changes
 
+### Key Relationships
+- `customers` → (one-to-many) → `subscriptions`
+- `subscriptions` → (many-to-one) → `profiles`
+- `subscriptions` → (one-to-many) → `invoices`
+- `customers` → (one-to-many) → `invoices`
+
 ### FreeRADIUS Tables
-- **radcheck**: User authentication attributes (username/password, MAC address)
-- **radreply**: User-specific RADIUS reply attributes
+- **radcheck**: User authentication attributes (username/password)
+- **radreply**: User-specific RADIUS reply attributes (static IP if specified in subscription)
 - **radgroupcheck**: Group authentication attributes
-- **radgroupreply**: Group reply attributes (speed limits, quotas)
+- **radgroupreply**: Group reply attributes (speed limits, quotas from profiles)
 - **radusergroup**: User to group mapping
 
 ## API Endpoints (Planned)
@@ -102,5 +113,12 @@ npm run db:push
 - **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
 
 ## Recent Changes
-- 2025-01-05: Initial project setup with complete frontend implementation
-- 2025-01-05: Database schema created for ISP management and FreeRADIUS integration
+- 2025-11-05: **MAJOR SCHEMA REFACTOR** - Implemented subscription-based architecture
+  - Created subscriptions table (customers → subscriptions → profiles)
+  - Added unique constraint on customers.nationalId (one national ID per customer)
+  - Moved installation_address, mac_address, activation_date, expiry_date to subscriptions
+  - Invoices now link to subscriptions instead of profiles directly
+  - Added optional static IP assignment in subscriptions (empty = router auto-assigns)
+- 2025-11-05: Completed payment tracking system with auto-status updates
+- 2025-11-05: Completed invoice generation with auto-numbering and tax calculation
+- 2025-11-05: Initial project setup with complete frontend implementation

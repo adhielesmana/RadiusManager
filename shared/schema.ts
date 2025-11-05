@@ -5,18 +5,30 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Customers table - ISP customer database (password stored in radcheck only for security)
+// One customer (unique by nationalId) can have multiple subscriptions
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
   username: varchar("username", { length: 100 }).notNull().unique(),
   fullName: text("full_name").notNull(),
-  nationalId: varchar("national_id", { length: 50 }),
+  nationalId: varchar("national_id", { length: 50 }).notNull().unique(), // Unique constraint - one national ID per customer
   whatsapp: varchar("whatsapp", { length: 20 }),
   email: varchar("email", { length: 255 }),
   homeAddress: text("home_address"),
-  installationAddress: text("installation_address"),
   mapsLocationUrl: text("maps_location_url"),
-  macAddress: varchar("mac_address", { length: 17 }),
-  profileId: integer("profile_id").references(() => profiles.id),
+  status: varchar("status", { length: 20 }).notNull().default('active'), // active, suspended, expired
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Subscriptions table - Links customers to profiles at specific locations
+// One customer can have multiple subscriptions (different locations or profiles)
+export const subscriptions = pgTable("subscriptions", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  profileId: integer("profile_id").notNull().references(() => profiles.id),
+  installationAddress: text("installation_address").notNull(),
+  ipAddress: varchar("ip_address", { length: 45 }), // Optional static IP (IPv4/IPv6), if empty router auto-assigns
+  macAddress: varchar("mac_address", { length: 17 }), // Optional MAC address binding
   status: varchar("status", { length: 20 }).notNull().default('active'), // active, suspended, expired
   activationDate: timestamp("activation_date").defaultNow(),
   expiryDate: timestamp("expiry_date"),
@@ -40,10 +52,11 @@ export const profiles = pgTable("profiles", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Invoices
+// Invoices - Linked to specific subscription (not just customer)
 export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").notNull().references(() => customers.id),
+  subscriptionId: integer("subscription_id").references(() => subscriptions.id), // Link to specific subscription
   invoiceNumber: varchar("invoice_number", { length: 50 }).notNull().unique(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   tax: decimal("tax", { precision: 10, scale: 2 }).default('0'),
@@ -51,7 +64,6 @@ export const invoices = pgTable("invoices", {
   status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, paid, overdue, partial
   dueDate: timestamp("due_date"),
   paidDate: timestamp("paid_date"),
-  profileId: integer("profile_id").references(() => profiles.id),
   billingPeriodStart: timestamp("billing_period_start"),
   billingPeriodEnd: timestamp("billing_period_end"),
   notes: text("notes"),
@@ -144,20 +156,28 @@ export const radusergroup = pgTable("radusergroup", {
 });
 
 // Relations
-export const customersRelations = relations(customers, ({ one, many }) => ({
-  profile: one(profiles, {
-    fields: [customers.profileId],
-    references: [profiles.id],
-  }),
+export const customersRelations = relations(customers, ({ many }) => ({
+  subscriptions: many(subscriptions),
   invoices: many(invoices),
   payments: many(payments),
   tickets: many(tickets),
   activityLogs: many(activityLogs),
 }));
 
-export const profilesRelations = relations(profiles, ({ many }) => ({
-  customers: many(customers),
+export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
+  customer: one(customers, {
+    fields: [subscriptions.customerId],
+    references: [customers.id],
+  }),
+  profile: one(profiles, {
+    fields: [subscriptions.profileId],
+    references: [profiles.id],
+  }),
   invoices: many(invoices),
+}));
+
+export const profilesRelations = relations(profiles, ({ many }) => ({
+  subscriptions: many(subscriptions),
 }));
 
 export const invoicesRelations = relations(invoices, ({ one, many }) => ({
@@ -165,9 +185,9 @@ export const invoicesRelations = relations(invoices, ({ one, many }) => ({
     fields: [invoices.customerId],
     references: [customers.id],
   }),
-  profile: one(profiles, {
-    fields: [invoices.profileId],
-    references: [profiles.id],
+  subscription: one(subscriptions, {
+    fields: [invoices.subscriptionId],
+    references: [subscriptions.id],
   }),
   payments: many(payments),
 }));
@@ -201,10 +221,15 @@ export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
 export const insertCustomerSchema = createInsertSchema(customers, {
   email: z.string().email().optional().or(z.literal('')),
   whatsapp: z.string().optional(),
-  macAddress: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/).optional().or(z.literal('')),
-}).omit({ id: true, createdAt: true, updatedAt: true, activationDate: true }).extend({
+}).omit({ id: true, createdAt: true, updatedAt: true }).extend({
   password: z.string().min(4).optional(), // Password handled separately, not stored in customers table
 });
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions, {
+  ipAddress: z.string().ip().optional().or(z.literal('')), // Optional static IP
+  macAddress: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/).optional().or(z.literal('')),
+  expiryDate: z.coerce.date().optional(),
+}).omit({ id: true, createdAt: true, updatedAt: true, activationDate: true });
 
 export const insertProfileSchema = createInsertSchema(profiles, {
   price: z.string().or(z.number()),
@@ -240,6 +265,9 @@ export const insertPaymentSchema = createInsertSchema(payments, {
 // Types
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
+
+export type Subscription = typeof subscriptions.$inferSelect;
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 
 export type Profile = typeof profiles.$inferSelect;
 export type InsertProfile = z.infer<typeof insertProfileSchema>;
