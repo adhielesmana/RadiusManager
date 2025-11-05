@@ -20,6 +20,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -27,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { insertInvoiceSchema, type Customer, type Profile, type InsertInvoice } from "@shared/schema";
+import { insertInvoiceSchema, type Customer, type Profile, type Subscription, type InsertInvoice } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
@@ -44,9 +45,9 @@ interface InvoiceDialogProps {
 export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedCustomer, setSelectedCustomer] = useState<(Customer & { profileName?: string }) | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
-  const { data: customers = [] } = useQuery<(Customer & { profileName?: string })[]>({
+  const { data: customers = [] } = useQuery<Customer[]>({
     queryKey: ['/api/customers'],
     enabled: open,
   });
@@ -70,40 +71,58 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
       tax: "0.00",
       total: "0.00",
       status: "pending",
-      profileId: undefined,
+      subscriptionId: undefined,
       notes: "",
       taxPercentage: 0,
     },
   });
 
-  const customerId = form.watch("customerId");
-  const amount = parseFloat(form.watch("amount") || "0");
+  const formCustomerId = form.watch("customerId");
+
+  const { data: subscriptions = [], isLoading: isLoadingSubscriptions } = useQuery<Subscription[]>({
+    queryKey: ['/api/subscriptions/customer', formCustomerId],
+    enabled: !!formCustomerId,
+  });
+  const subscriptionId = form.watch("subscriptionId");
+  const amount = parseFloat(String(form.watch("amount") || "0"));
   const taxPercentage = form.watch("taxPercentage") || 0;
 
-  // Auto-select profile and calculate amount when customer changes
+  // Update selected customer when form customerId changes
   useEffect(() => {
-    // Only run when customerId is actually set (not undefined)
-    if (!customerId) {
+    if (!formCustomerId) {
       setSelectedCustomer(null);
+      form.setValue("subscriptionId", undefined);
       return;
     }
     
-    const customer = customers.find(c => c.id === customerId);
+    const customer = customers.find(c => c.id === formCustomerId);
     setSelectedCustomer(customer || null);
     
-    if (customer?.profileId) {
-      const profile = profiles.find(p => p.id === customer.profileId);
+    // Clear subscription when customer changes
+    form.setValue("subscriptionId", undefined);
+    form.setValue("amount", "0.00");
+    form.setValue("notes", "");
+  }, [formCustomerId, customers, form]);
+
+  // Auto-populate form when subscription is selected
+  useEffect(() => {
+    if (!subscriptionId) {
+      return;
+    }
+    
+    const subscription = subscriptions.find(s => s.id === subscriptionId);
+    if (subscription) {
+      const profile = profiles.find(p => p.id === subscription.profileId);
       if (profile) {
         const profilePrice = typeof profile.price === 'string' ? parseFloat(profile.price) : profile.price;
         form.setValue("amount", profilePrice.toFixed(2));
-        form.setValue("profileId", customer.profileId);
         
-        // Set notes with profile details
+        // Set notes with profile and subscription details
         const quotaText = profile.dataQuota ? `${profile.dataQuota} GB` : "Unlimited";
-        form.setValue("notes", `${profile.name} - ${profile.validityDays} days\nDownload: ${profile.downloadSpeed} Mbps, Upload: ${profile.uploadSpeed} Mbps\nData Quota: ${quotaText}`);
+        form.setValue("notes", `${profile.name} - ${profile.validityDays} days\nInstallation: ${subscription.installationAddress}\nDownload: ${profile.downloadSpeed} Mbps, Upload: ${profile.uploadSpeed} Mbps\nData Quota: ${quotaText}`);
       }
     }
-  }, [customerId, customers, profiles, form]);
+  }, [subscriptionId, subscriptions, profiles, form]);
 
   // Auto-calculate total when amount or tax changes
   useEffect(() => {
@@ -131,7 +150,7 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
         tax: "0.00",
         total: "0.00",
         status: "pending",
-        profileId: undefined,
+        subscriptionId: undefined,
         notes: "",
         taxPercentage: 0,
       });
@@ -164,10 +183,10 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
     // Ensure dates are properly formatted
     const submitData = {
       ...invoiceData,
-      dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : null,
-      paidDate: invoiceData.paidDate ? new Date(invoiceData.paidDate) : null,
-      billingPeriodStart: invoiceData.billingPeriodStart ? new Date(invoiceData.billingPeriodStart) : null,
-      billingPeriodEnd: invoiceData.billingPeriodEnd ? new Date(invoiceData.billingPeriodEnd) : null,
+      dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : undefined,
+      paidDate: invoiceData.paidDate ? new Date(invoiceData.paidDate) : undefined,
+      billingPeriodStart: invoiceData.billingPeriodStart ? new Date(invoiceData.billingPeriodStart) : undefined,
+      billingPeriodEnd: invoiceData.billingPeriodEnd ? new Date(invoiceData.billingPeriodEnd) : undefined,
     };
     createMutation.mutate(submitData);
   };
@@ -231,10 +250,57 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p>Name: {selectedCustomer.fullName}</p>
                   <p>Email: {selectedCustomer.email || 'N/A'}</p>
-                  <p>Profile: {selectedCustomer.profileName || 'No profile assigned'}</p>
+                  <p>Username: {selectedCustomer.username}</p>
                 </div>
               </div>
             )}
+
+            <FormField
+              control={form.control}
+              name="subscriptionId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Subscription *</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    value={field.value?.toString() || ""}
+                    disabled={!formCustomerId}
+                  >
+                    <FormControl>
+                      <SelectTrigger data-testid="select-subscription">
+                        <SelectValue placeholder={
+                          !formCustomerId 
+                            ? "Select a customer first" 
+                            : isLoadingSubscriptions 
+                              ? "Loading subscriptions..." 
+                              : subscriptions.length === 0
+                                ? "No subscriptions available"
+                                : "Select subscription"
+                        } />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {subscriptions.map((subscription) => {
+                        const profile = profiles.find(p => p.id === subscription.profileId);
+                        return (
+                          <SelectItem key={subscription.id} value={subscription.id.toString()}>
+                            {profile?.name || 'Unknown Profile'} - {subscription.installationAddress} ({subscription.status})
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {!formCustomerId 
+                      ? "Please select a customer first" 
+                      : subscriptions.length === 0 && !isLoadingSubscriptions
+                        ? "This customer has no subscriptions"
+                        : "Select the subscription to bill"}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
                 control={form.control}
@@ -286,7 +352,7 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
                         data-testid="input-amount"
                       />
                     </FormControl>
-                    <FormDescription>Based on customer's profile</FormDescription>
+                    <FormDescription>Based on subscription's profile</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -359,6 +425,28 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notes</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      value={field.value || ""}
+                      placeholder="Additional notes about the invoice"
+                      className="resize-none"
+                      rows={4}
+                      data-testid="input-notes"
+                    />
+                  </FormControl>
+                  <FormDescription>Auto-populated from subscription details</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
