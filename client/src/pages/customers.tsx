@@ -12,14 +12,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CustomerDialog } from "@/components/customer-dialog";
-import type { Customer, Profile } from "@shared/schema";
+import { CustomerDetailsDialog } from "@/components/customer-details-dialog";
+import type { Customer } from "@shared/schema";
 
 export default function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [customerToView, setCustomerToView] = useState<Customer | null>(null);
 
-  const { data: customers = [], isLoading } = useQuery<(Customer & { profileName?: string })[]>({
+  const { data: customers = [], isLoading } = useQuery<(Customer & { subscriptionCount?: number })[]>({
     queryKey: ['/api/customers'],
   });
 
@@ -37,6 +40,11 @@ export default function Customers() {
   const handleEditCustomer = (customer: Customer) => {
     setSelectedCustomer(customer);
     setIsDialogOpen(true);
+  };
+
+  const handleViewDetails = (customer: Customer) => {
+    setCustomerToView(customer);
+    setIsDetailsDialogOpen(true);
   };
 
   return (
@@ -86,10 +94,9 @@ export default function Customers() {
                   <tr className="border-b border-border">
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Profile</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Subscriptions</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contact</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Address</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expiry Date</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
@@ -106,7 +113,9 @@ export default function Customers() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-sm">{customer.profileName || 'No Profile'}</p>
+                        <p className="text-sm" data-testid={`customer-subscription-count-${customer.id}`}>
+                          {customer.subscriptionCount || 0} subscription{customer.subscriptionCount !== 1 ? 's' : ''}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         <div>
@@ -115,12 +124,7 @@ export default function Customers() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-sm max-w-xs truncate">{customer.installationAddress || customer.homeAddress || 'N/A'}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm">
-                          {customer.expiryDate ? new Date(customer.expiryDate).toLocaleDateString() : 'N/A'}
-                        </p>
+                        <p className="text-sm max-w-xs truncate">{customer.homeAddress || 'N/A'}</p>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <DropdownMenu>
@@ -130,7 +134,7 @@ export default function Customers() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem data-testid={`button-view-${customer.id}`}>
+                            <DropdownMenuItem onClick={() => handleViewDetails(customer)} data-testid={`button-view-${customer.id}`}>
                               <Eye className="mr-2 h-4 w-4" /> View Details
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleEditCustomer(customer)} data-testid={`button-edit-${customer.id}`}>
@@ -161,6 +165,12 @@ export default function Customers() {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         customer={selectedCustomer}
+      />
+
+      <CustomerDetailsDialog
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        customer={customerToView}
       />
     </div>
   );

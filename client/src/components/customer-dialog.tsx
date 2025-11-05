@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { insertCustomerSchema, type Customer, type InsertCustomer, type Profile } from "@shared/schema";
+import { insertCustomerSchema, type Customer, type InsertCustomer } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
@@ -42,11 +42,6 @@ interface CustomerDialogProps {
 export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const { data: profiles = [] } = useQuery<Profile[]>({
-    queryKey: ['/api/profiles'],
-    enabled: open,
-  });
 
   const form = useForm<InsertCustomer>({
     resolver: zodResolver(
@@ -62,12 +57,8 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
       whatsapp: "",
       email: "",
       homeAddress: "",
-      installationAddress: "",
       mapsLocationUrl: "",
-      macAddress: "",
-      profileId: undefined,
       status: "active",
-      expiryDate: undefined,
     },
   });
 
@@ -82,12 +73,8 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
         whatsapp: customer.whatsapp || "",
         email: customer.email || "",
         homeAddress: customer.homeAddress || "",
-        installationAddress: customer.installationAddress || "",
         mapsLocationUrl: customer.mapsLocationUrl || "",
-        macAddress: customer.macAddress || "",
-        profileId: customer.profileId || undefined,
         status: customer.status,
-        expiryDate: customer.expiryDate || undefined,
       });
     } else {
       form.reset({
@@ -98,12 +85,8 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
         whatsapp: "",
         email: "",
         homeAddress: "",
-        installationAddress: "",
         mapsLocationUrl: "",
-        macAddress: "",
-        profileId: undefined,
         status: "active",
-        expiryDate: undefined,
       });
     }
   }, [customer, form]);
@@ -202,20 +185,6 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="macAddress"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>MAC Address</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="00:11:22:33:44:55" className="font-mono" data-testid="input-mac-address" />
-                      </FormControl>
-                      <FormDescription>Format: XX:XX:XX:XX:XX:XX</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
             </div>
 
@@ -284,7 +253,7 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Installation Information</h3>
+              <h3 className="text-lg font-semibold">Address Information</h3>
               <div className="grid gap-4">
                 <FormField
                   control={form.control}
@@ -293,20 +262,7 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
                     <FormItem>
                       <FormLabel>Home Address</FormLabel>
                       <FormControl>
-                        <Textarea {...field} placeholder="123 Main Street, City, State" className="min-h-20" data-testid="input-home-address" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="installationAddress"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Installation Address</FormLabel>
-                      <FormControl>
-                        <Textarea {...field} placeholder="456 Business Ave, City, State" className="min-h-20" data-testid="input-installation-address" />
+                        <Textarea {...field} value={field.value || ""} placeholder="123 Main Street, City, State" className="min-h-20" data-testid="input-home-address" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -319,7 +275,7 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
                     <FormItem>
                       <FormLabel>Google Maps Location URL</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="https://maps.google.com/..." data-testid="input-maps-url" />
+                        <Input {...field} value={field.value || ""} placeholder="https://maps.google.com/..." data-testid="input-maps-url" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -329,58 +285,29 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Service Details</h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="profileId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Service Profile</FormLabel>
-                      <Select
-                        onValueChange={(value) => field.onChange(parseInt(value))}
-                        value={field.value?.toString()}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-profile">
-                            <SelectValue placeholder="Select a profile" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {profiles.map((profile) => (
-                            <SelectItem key={profile.id} value={profile.id.toString()}>
-                              {profile.name} - ${Number(profile.price).toFixed(2)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Status</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-status">
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="suspended">Suspended</SelectItem>
-                          <SelectItem value="expired">Expired</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <h3 className="text-lg font-semibold">Account Status</h3>
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="suspended">Suspended</SelectItem>
+                        <SelectItem value="expired">Expired</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <DialogFooter className="gap-2">

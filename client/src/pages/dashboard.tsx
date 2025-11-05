@@ -5,7 +5,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { Users, DollarSign, Ticket, AlertTriangle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import type { Customer, Invoice, Ticket as TicketType } from "@shared/schema";
+import { format } from "date-fns";
+import type { Subscription, Invoice, Ticket as TicketType } from "@shared/schema";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery<{
@@ -26,8 +27,8 @@ export default function Dashboard() {
     queryKey: ['/api/tickets/open'],
   });
 
-  const { data: expiringCustomers = [] } = useQuery<Customer[]>({
-    queryKey: ['/api/customers/expiring'],
+  const { data: expiringSubscriptions = [] } = useQuery<(Subscription & { customerName?: string, profileName?: string })[]>({
+    queryKey: ['/api/subscriptions/expiring'],
   });
 
   if (statsLoading) {
@@ -156,20 +157,20 @@ export default function Dashboard() {
             </Link>
           </CardHeader>
           <CardContent className="space-y-3">
-            {expiringCustomers.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No expiring accounts</p>
+            {expiringSubscriptions.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">No expiring subscriptions</p>
             ) : (
-              expiringCustomers.map((customer) => (
-                <div key={customer.id} className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0" data-testid={`expiring-customer-${customer.id}`}>
+              expiringSubscriptions.map((subscription) => (
+                <div key={subscription.id} className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0" data-testid={`expiring-subscription-${subscription.id}`}>
                   <div>
-                    <p className="text-sm font-medium">{customer.fullName}</p>
-                    <p className="text-xs text-muted-foreground">{customer.username}</p>
+                    <p className="text-sm font-medium">{subscription.customerName || 'Unknown'}</p>
+                    <p className="text-xs text-muted-foreground">{subscription.profileName || 'Unknown Profile'}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">
-                      {customer.expiryDate ? new Date(customer.expiryDate).toLocaleDateString() : 'N/A'}
+                      {subscription.expiryDate ? format(new Date(subscription.expiryDate), 'MMM dd, yyyy') : 'N/A'}
                     </p>
-                    <StatusBadge status={customer.status} type="customer" />
+                    <StatusBadge status={subscription.status} type="customer" />
                   </div>
                 </div>
               ))
