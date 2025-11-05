@@ -8,13 +8,14 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Settings } from "@shared/schema";
 import { CURRENCIES } from "@shared/currencies";
-import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Loader2, Upload, X } from "lucide-react";
 
 export default function Settings() {
   const { toast } = useToast();
   const [selectedCurrency, setSelectedCurrency] = useState<string>("IDR");
   const [logoUrl, setLogoUrl] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: settings, isLoading } = useQuery<Settings>({
     queryKey: ['/api/settings'],
@@ -63,6 +64,56 @@ export default function Settings() {
     updateSettingsMutation.mutate({ logoUrl });
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid file",
+        description: "Please upload an image file (PNG, JPG, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please upload an image smaller than 2MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setLogoUrl(dataUrl);
+      // Auto-save after upload
+      updateSettingsMutation.mutate({ logoUrl: dataUrl });
+    };
+    reader.onerror = () => {
+      toast({
+        title: "Upload failed",
+        description: "Failed to read the image file",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoUrl("");
+    updateSettingsMutation.mutate({ logoUrl: "" });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -82,63 +133,74 @@ export default function Settings() {
             </div>
           ) : (
             <>
-              <div className="space-y-2">
-                <Label htmlFor="logo-url">Logo URL</Label>
-                <Input 
-                  id="logo-url" 
-                  placeholder="https://example.com/logo.png"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  data-testid="input-logo-url"
-                />
-                <p className="text-sm text-muted-foreground">
-                  Enter a URL to your company logo. This will appear in the sidebar and on invoices.
-                </p>
-              </div>
-              {logoUrl && (
-                <div className="space-y-2">
-                  <Label>Logo Preview</Label>
+              {!logoUrl ? (
+                <div className="space-y-4">
+                  <Label>Upload Logo</Label>
+                  <div 
+                    className="flex flex-col items-center justify-center rounded-md border-2 border-dashed border-border p-8 hover-elevate cursor-pointer transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="div-logo-upload-area"
+                  >
+                    <Upload className="h-10 w-10 text-muted-foreground mb-3" />
+                    <p className="text-sm font-medium mb-1">Click to upload logo</p>
+                    <p className="text-xs text-muted-foreground">PNG, JPG or GIF (max 2MB)</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-logo-file"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <Label>Current Logo</Label>
                   <div className="flex items-center gap-4 rounded-md border border-border p-4 bg-muted/30">
                     <div className="flex h-16 w-16 items-center justify-center rounded-md border border-border bg-background">
                       <img 
                         src={logoUrl} 
-                        alt="Company logo preview" 
+                        alt="Company logo" 
                         className="max-h-14 max-w-14 object-contain"
-                        onError={(e) => {
-                          const target = e.currentTarget;
-                          target.style.display = 'none';
-                          const errorMsg = target.nextElementSibling as HTMLElement;
-                          if (errorMsg) errorMsg.style.display = 'block';
-                        }}
-                        onLoad={(e) => {
-                          const target = e.currentTarget;
-                          target.style.display = 'block';
-                          const errorMsg = target.nextElementSibling as HTMLElement;
-                          if (errorMsg) errorMsg.style.display = 'none';
-                        }}
                         data-testid="img-logo-preview"
                       />
-                      <span className="hidden text-xs text-destructive text-center px-2">Failed to load</span>
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium">Preview</p>
-                      <p className="text-xs text-muted-foreground">This logo will appear in the sidebar and on invoices</p>
+                      <p className="text-sm font-medium">Logo uploaded</p>
+                      <p className="text-xs text-muted-foreground">This logo appears in the sidebar and on invoices</p>
                     </div>
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={handleRemoveLogo}
+                      disabled={updateSettingsMutation.isPending}
+                      data-testid="button-remove-logo"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={updateSettingsMutation.isPending}
+                      data-testid="button-change-logo"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Change Logo
+                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-logo-file"
+                    />
                   </div>
                 </div>
               )}
-              <div className="flex justify-end">
-                <Button 
-                  onClick={handleLogoSave}
-                  disabled={updateSettingsMutation.isPending}
-                  data-testid="button-save-logo"
-                >
-                  {updateSettingsMutation.isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Save Logo
-                </Button>
-              </div>
             </>
           )}
         </CardContent>
