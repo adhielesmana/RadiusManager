@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema } from "@shared/schema";
+import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema } from "@shared/schema";
 import { db } from "./db";
 import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -371,6 +371,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Ticket not found" });
       }
       res.json(ticket);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Settings Endpoints
+  app.get("/api/settings", async (_req, res) => {
+    try {
+      const settings = await storage.getSettings();
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/settings", async (req, res) => {
+    try {
+      const validatedData = insertSettingsSchema.partial().parse(req.body);
+      const settings = await storage.updateSettings(validatedData);
+      res.json(settings);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

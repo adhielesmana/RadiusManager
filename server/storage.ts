@@ -9,6 +9,7 @@ import {
   payments,
   tickets,
   activityLogs,
+  settings,
   radcheck,
   radreply,
   radusergroup,
@@ -26,6 +27,8 @@ import {
   type Ticket,
   type InsertTicket,
   type InsertActivityLog,
+  type Settings,
+  type InsertSettings,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -77,6 +80,10 @@ export interface IStorage {
   
   // Activity log
   logActivity(log: InsertActivityLog): Promise<void>;
+  
+  // Settings operations
+  getSettings(): Promise<Settings>;
+  updateSettings(settings: Partial<InsertSettings>): Promise<Settings>;
   
   // RADIUS operations
   syncSubscriptionToRadius(subscription: Subscription, customer: Customer): Promise<void>;
@@ -559,6 +566,35 @@ export class DatabaseStorage implements IStorage {
         priority: 1,
       });
     }
+  }
+
+  async getSettings(): Promise<Settings> {
+    // Get settings, create default if doesn't exist
+    const result = await db.select().from(settings).limit(1);
+    
+    if (result.length === 0) {
+      // Create default settings with IDR currency
+      const [newSettings] = await db.insert(settings).values({
+        currencyCode: 'IDR',
+      }).returning();
+      return newSettings;
+    }
+    
+    return result[0];
+  }
+
+  async updateSettings(settingsData: Partial<InsertSettings>): Promise<Settings> {
+    // Get or create settings
+    const currentSettings = await this.getSettings();
+    
+    // Update settings
+    const [updated] = await db
+      .update(settings)
+      .set({ ...settingsData, updatedAt: new Date() })
+      .where(eq(settings.id, currentSettings.id))
+      .returning();
+    
+    return updated;
   }
 
   async syncProfileToRadiusGroup(profile: Profile): Promise<void> {

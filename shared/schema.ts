@@ -109,6 +109,13 @@ export const activityLogs = pgTable("activity_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Settings - Application-wide configuration (single row)
+export const settings = pgTable("settings", {
+  id: serial("id").primaryKey(),
+  currencyCode: varchar("currency_code", { length: 3 }).notNull().default('IDR'), // ISO 4217 currency code
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // FreeRADIUS Tables
 // radcheck - User authentication (username/password)
 export const radcheck = pgTable("radcheck", {
@@ -262,6 +269,11 @@ export const insertPaymentSchema = createInsertSchema(payments, {
   paymentDate: z.coerce.date().optional(),
 }).omit({ id: true, createdAt: true });
 
+export const insertSettingsSchema = createInsertSchema(settings).omit({ 
+  id: true, 
+  updatedAt: true,
+});
+
 // Types
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -283,6 +295,9 @@ export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+
+export type Settings = typeof settings.$inferSelect;
+export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 
 export type Radcheck = typeof radcheck.$inferSelect;
 export type Radreply = typeof radreply.$inferSelect;

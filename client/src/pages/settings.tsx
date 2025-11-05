@@ -2,9 +2,57 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Settings } from "@shared/schema";
+import { CURRENCIES } from "@shared/currencies";
+import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
 export default function Settings() {
+  const { toast } = useToast();
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("IDR");
+
+  const { data: settings, isLoading } = useQuery<Settings>({
+    queryKey: ['/api/settings'],
+  });
+
+  useEffect(() => {
+    if (settings?.currencyCode) {
+      setSelectedCurrency(settings.currencyCode);
+    }
+  }, [settings]);
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (currencyCode: string) => {
+      return await apiRequest('/api/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ currencyCode }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      toast({
+        title: "Settings updated",
+        description: "Currency preference has been saved successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCurrencySave = () => {
+    updateSettingsMutation.mutate(selectedCurrency);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -78,31 +126,55 @@ export default function Settings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Invoice Settings</CardTitle>
-          <CardDescription>Configure invoice generation and billing preferences</CardDescription>
+          <CardTitle>Currency Settings</CardTitle>
+          <CardDescription>Select your preferred currency for all financial transactions</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="tax-rate">Tax Rate (%)</Label>
-              <Input id="tax-rate" type="number" placeholder="0" data-testid="input-tax-rate" />
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="invoice-prefix">Invoice Prefix</Label>
-              <Input id="invoice-prefix" placeholder="INV-" data-testid="input-invoice-prefix" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="payment-terms">Payment Terms (days)</Label>
-              <Input id="payment-terms" type="number" placeholder="30" data-testid="input-payment-terms" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="currency">Currency</Label>
-              <Input id="currency" placeholder="USD" data-testid="input-currency" />
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button data-testid="button-save-invoice">Save Settings</Button>
-          </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="currency">Currency</Label>
+                <Select 
+                  value={selectedCurrency} 
+                  onValueChange={setSelectedCurrency}
+                >
+                  <SelectTrigger id="currency" data-testid="select-currency">
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((currency) => (
+                      <SelectItem 
+                        key={currency.code} 
+                        value={currency.code}
+                        data-testid={`currency-${currency.code}`}
+                      >
+                        {currency.symbol} - {currency.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  This currency will be used for all invoices, profiles, and financial displays
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Button 
+                  onClick={handleCurrencySave}
+                  disabled={updateSettingsMutation.isPending}
+                  data-testid="button-save-currency"
+                >
+                  {updateSettingsMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Save Currency
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
