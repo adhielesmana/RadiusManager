@@ -5,6 +5,7 @@ import {
   customers,
   profiles,
   invoices,
+  payments,
   tickets,
   activityLogs,
   radcheck,
@@ -17,6 +18,8 @@ import {
   type InsertProfile,
   type Invoice,
   type InsertInvoice,
+  type Payment,
+  type InsertPayment,
   type Ticket,
   type InsertTicket,
   type InsertActivityLog,
@@ -40,6 +43,12 @@ export interface IStorage {
   getInvoices(): Promise<Invoice[]>;
   getRecentInvoices(limit: number): Promise<Invoice[]>;
   createInvoice(invoice: InsertInvoice): Promise<Invoice>;
+  
+  // Payment operations
+  getPayments(): Promise<Payment[]>;
+  getInvoicePayments(invoiceId: number): Promise<Payment[]>;
+  getCustomerPayments(customerId: number): Promise<Payment[]>;
+  createPayment(payment: InsertPayment): Promise<Payment>;
   
   // Ticket operations
   getTickets(): Promise<Ticket[]>;
@@ -200,6 +209,79 @@ export class DatabaseStorage implements IStorage {
     });
     
     return invoice;
+  }
+
+  async getPayments(): Promise<Payment[]> {
+    return await db.select().from(payments).orderBy(desc(payments.createdAt));
+  }
+
+  async getInvoicePayments(invoiceId: number): Promise<Payment[]> {
+    return await db
+      .select()
+      .from(payments)
+      .where(eq(payments.invoiceId, invoiceId))
+      .orderBy(desc(payments.paymentDate));
+  }
+
+  async getCustomerPayments(customerId: number): Promise<Payment[]> {
+    return await db
+      .select()
+      .from(payments)
+      .where(eq(payments.customerId, customerId))
+      .orderBy(desc(payments.paymentDate));
+  }
+
+  async createPayment(insertPayment: InsertPayment): Promise<Payment> {
+    // Create payment record
+    const [payment] = await db
+      .insert(payments)
+      .values(insertPayment)
+      .returning();
+    
+    // Get invoice and all its payments to calculate status
+    const [invoice] = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.id, insertPayment.invoiceId));
+    
+    if (invoice) {
+      // Get all payments for this invoice
+      const allPayments = await this.getInvoicePayments(insertPayment.invoiceId);
+      
+      // Calculate total paid
+      const totalPaid = allPayments.reduce((sum, p) => {
+        const amount = typeof p.amount === 'string' ? parseFloat(p.amount) : p.amount;
+        return sum + amount;
+      }, 0);
+      
+      const invoiceTotal = typeof invoice.total === 'string' ? parseFloat(invoice.total) : invoice.total;
+      
+      // Update invoice status based on payment
+      let newStatus = invoice.status;
+      let paidDate = invoice.paidDate;
+      
+      if (totalPaid >= invoiceTotal) {
+        newStatus = 'paid';
+        paidDate = new Date();
+      } else if (totalPaid > 0) {
+        newStatus = 'partial';
+      }
+      
+      // Update invoice
+      await db
+        .update(invoices)
+        .set({ status: newStatus, paidDate })
+        .where(eq(invoices.id, insertPayment.invoiceId));
+    }
+    
+    // Log activity
+    await this.logActivity({
+      customerId: payment.customerId,
+      action: "payment_recorded",
+      description: `Payment of $${payment.amount} recorded via ${payment.paymentMethod}`,
+    });
+    
+    return payment;
   }
 
   async getTickets(): Promise<Ticket[]> {

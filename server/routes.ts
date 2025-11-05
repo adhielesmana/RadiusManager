@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertProfileSchema, insertInvoiceSchema, insertTicketSchema } from "@shared/schema";
+import { insertCustomerSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema } from "@shared/schema";
 import { db } from "./db";
 import { customers, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -205,6 +205,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const invoice = await storage.createInvoice(validatedData);
       res.status(201).json(invoice);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Payments Endpoints
+  app.get("/api/payments", async (_req, res) => {
+    try {
+      const allPayments = await storage.getPayments();
+      res.json(allPayments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/payments/invoice/:invoiceId", async (req, res) => {
+    try {
+      const invoiceId = parseInt(req.params.invoiceId);
+      const payments = await storage.getInvoicePayments(invoiceId);
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/payments/customer/:customerId", async (req, res) => {
+    try {
+      const customerId = parseInt(req.params.customerId);
+      const payments = await storage.getCustomerPayments(customerId);
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/payments", async (req, res) => {
+    try {
+      const validatedData = insertPaymentSchema.parse(req.body);
+      const payment = await storage.createPayment(validatedData);
+      res.status(201).json(payment);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

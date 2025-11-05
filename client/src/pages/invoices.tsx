@@ -4,13 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
-import { Plus, Search, Download, Eye, DollarSign } from "lucide-react";
+import { Plus, Search, Download, Eye, DollarSign, CreditCard, History } from "lucide-react";
 import type { Invoice } from "@shared/schema";
 import { InvoiceDialog } from "@/components/invoice-dialog";
+import { PaymentDialog } from "@/components/payment-dialog";
+import { PaymentHistoryDialog } from "@/components/payment-history-dialog";
 
 export default function Invoices() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice & { customerName: string; profileName?: string } | null>(null);
 
   const { data: invoices = [], isLoading } = useQuery<(Invoice & { customerName: string; profileName?: string })[]>({
     queryKey: ['/api/invoices'],
@@ -28,9 +33,14 @@ export default function Invoices() {
           <h1 className="text-2xl font-semibold" data-testid="heading-invoices">Invoices</h1>
           <p className="text-sm text-muted-foreground">Manage billing and payments</p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} data-testid="button-generate-invoice">
-          <Plus className="mr-2 h-4 w-4" /> Generate Invoice
-        </Button>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => setPaymentDialogOpen(true)} data-testid="button-record-payment">
+            <CreditCard className="mr-2 h-4 w-4" /> Record Payment
+          </Button>
+          <Button onClick={() => setDialogOpen(true)} data-testid="button-generate-invoice">
+            <Plus className="mr-2 h-4 w-4" /> Generate Invoice
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -101,6 +111,17 @@ export default function Invoices() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => {
+                              setSelectedInvoice(invoice);
+                              setPaymentHistoryOpen(true);
+                            }}
+                            data-testid={`button-view-payments-${invoice.id}`}
+                          >
+                            <History className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" data-testid={`button-view-invoice-${invoice.id}`}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -119,6 +140,13 @@ export default function Invoices() {
       </Card>
 
       <InvoiceDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <PaymentDialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen} />
+      <PaymentHistoryDialog 
+        open={paymentHistoryOpen} 
+        onOpenChange={setPaymentHistoryOpen}
+        invoiceId={selectedInvoice?.id}
+        invoiceNumber={selectedInvoice?.invoiceNumber}
+      />
     </div>
   );
 }

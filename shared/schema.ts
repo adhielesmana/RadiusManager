@@ -48,12 +48,25 @@ export const invoices = pgTable("invoices", {
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   tax: decimal("tax", { precision: 10, scale: 2 }).default('0'),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, paid, overdue
+  status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, paid, overdue, partial
   dueDate: timestamp("due_date"),
   paidDate: timestamp("paid_date"),
   profileId: integer("profile_id").references(() => profiles.id),
   billingPeriodStart: timestamp("billing_period_start"),
   billingPeriodEnd: timestamp("billing_period_end"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Payments - Track all payments against invoices
+export const payments = pgTable("payments", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }).notNull(), // cash, bank_transfer, card, upi, etc.
+  paymentDate: timestamp("payment_date").notNull().defaultNow(),
+  transactionReference: varchar("transaction_reference", { length: 100 }),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -137,6 +150,7 @@ export const customersRelations = relations(customers, ({ one, many }) => ({
     references: [profiles.id],
   }),
   invoices: many(invoices),
+  payments: many(payments),
   tickets: many(tickets),
   activityLogs: many(activityLogs),
 }));
@@ -146,7 +160,7 @@ export const profilesRelations = relations(profiles, ({ many }) => ({
   invoices: many(invoices),
 }));
 
-export const invoicesRelations = relations(invoices, ({ one }) => ({
+export const invoicesRelations = relations(invoices, ({ one, many }) => ({
   customer: one(customers, {
     fields: [invoices.customerId],
     references: [customers.id],
@@ -154,6 +168,18 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   profile: one(profiles, {
     fields: [invoices.profileId],
     references: [profiles.id],
+  }),
+  payments: many(payments),
+}));
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [payments.invoiceId],
+    references: [invoices.id],
+  }),
+  customer: one(customers, {
+    fields: [payments.customerId],
+    references: [customers.id],
   }),
 }));
 
@@ -206,6 +232,11 @@ export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
   createdAt: true,
 });
 
+export const insertPaymentSchema = createInsertSchema(payments, {
+  amount: z.string().or(z.number()),
+  paymentDate: z.coerce.date().optional(),
+}).omit({ id: true, createdAt: true });
+
 // Types
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -221,6 +252,9 @@ export type InsertTicket = z.infer<typeof insertTicketSchema>;
 
 export type ActivityLog = typeof activityLogs.$inferSelect;
 export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
 export type Radcheck = typeof radcheck.$inferSelect;
 export type Radreply = typeof radreply.$inferSelect;
