@@ -238,9 +238,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProfile(insertProfile: InsertProfile): Promise<Profile> {
+    // Convert price to string if it's a number
+    const profileData = {
+      ...insertProfile,
+      price: typeof insertProfile.price === 'number' ? insertProfile.price.toString() : insertProfile.price,
+    };
+
     const [profile] = await db
       .insert(profiles)
-      .values(insertProfile)
+      .values(profileData)
       .returning();
     
     // Sync to RADIUS groups
@@ -250,9 +256,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProfile(id: number, data: Partial<InsertProfile>): Promise<Profile | undefined> {
+    // Convert price to string if it's a number
+    const updateData = {
+      ...data,
+      price: data.price !== undefined 
+        ? (typeof data.price === 'number' ? data.price.toString() : data.price)
+        : undefined,
+    };
+
     const [profile] = await db
       .update(profiles)
-      .set(data)
+      .set(updateData)
       .where(eq(profiles.id, id))
       .returning();
     
@@ -277,9 +291,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createInvoice(insertInvoice: InsertInvoice): Promise<Invoice> {
+    // Convert amounts to strings if they're numbers
+    const invoiceData = {
+      ...insertInvoice,
+      amount: typeof insertInvoice.amount === 'number' ? insertInvoice.amount.toString() : insertInvoice.amount,
+      tax: insertInvoice.tax !== undefined 
+        ? (typeof insertInvoice.tax === 'number' ? insertInvoice.tax.toString() : insertInvoice.tax)
+        : undefined,
+      total: typeof insertInvoice.total === 'number' ? insertInvoice.total.toString() : insertInvoice.total,
+    };
+
     const [invoice] = await db
       .insert(invoices)
-      .values(insertInvoice)
+      .values(invoiceData)
       .returning();
     
     // Log activity
@@ -313,10 +337,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPayment(insertPayment: InsertPayment): Promise<Payment> {
+    // Convert amount to string if it's a number
+    const paymentData = {
+      ...insertPayment,
+      amount: typeof insertPayment.amount === 'number' ? insertPayment.amount.toString() : insertPayment.amount,
+    };
+
     // Create payment record
     const [payment] = await db
       .insert(payments)
-      .values(insertPayment)
+      .values(paymentData)
       .returning();
     
     // Get invoice and all its payments to calculate status

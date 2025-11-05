@@ -9,8 +9,10 @@ import type { Invoice } from "@shared/schema";
 import { InvoiceDialog } from "@/components/invoice-dialog";
 import { PaymentDialog } from "@/components/payment-dialog";
 import { PaymentHistoryDialog } from "@/components/payment-history-dialog";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function Invoices() {
+  const { format: formatCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -99,7 +101,7 @@ export default function Invoices() {
                         <p className="text-sm">{invoice.profileName || 'N/A'}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium">${Number(invoice.total).toFixed(2)}</p>
+                        <p className="text-sm font-medium">{formatCurrency(invoice.total)}</p>
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={invoice.status} type="payment" />

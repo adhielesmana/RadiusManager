@@ -27,11 +27,13 @@ export default function Settings() {
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (currencyCode: string) => {
-      return await apiRequest('/api/settings', {
+      const res = await fetch('/api/settings', {
         method: 'PATCH',
         body: JSON.stringify({ currencyCode }),
         headers: { 'Content-Type': 'application/json' },
       });
+      if (!res.ok) throw new Error('Failed to update settings');
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });

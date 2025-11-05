@@ -5,8 +5,10 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Plus, Download, Upload, Gauge, Calendar, DollarSign, Edit, Trash2 } from "lucide-react";
 import { ProfileDialog } from "@/components/profile-dialog";
 import type { Profile } from "@shared/schema";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function Profiles() {
+  const { format: formatCurrency } = useCurrency();
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -115,7 +117,7 @@ export default function Profiles() {
                       <DollarSign className="h-5 w-5 text-primary" />
                       <span className="text-sm text-muted-foreground">Price</span>
                     </div>
-                    <span className="text-xl font-bold text-primary">${Number(profile.price).toFixed(2)}</span>
+                    <span className="text-xl font-bold text-primary">{formatCurrency(profile.price)}</span>
                   </div>
                 </div>
               </CardContent>

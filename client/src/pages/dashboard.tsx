@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import type { Subscription, Invoice, Ticket as TicketType } from "@shared/schema";
+import { useCurrency } from "@/hooks/use-currency";
 
 export default function Dashboard() {
+  const { format: formatCurrency } = useCurrency();
+
   const { data: stats, isLoading: statsLoading } = useQuery<{
     totalCustomers: number;
     activeCustomers: number;
@@ -73,7 +76,7 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Revenue This Month"
-          value={`$${stats?.revenue?.toFixed(2) || '0.00'}`}
+          value={formatCurrency(stats?.revenue || 0)}
           icon={DollarSign}
           testId="metric-revenue"
         />
@@ -106,7 +109,7 @@ export default function Dashboard() {
                     <p className="text-xs text-muted-foreground">{invoice.invoiceNumber}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium">${Number(invoice.total).toFixed(2)}</p>
+                    <p className="text-sm font-medium">{formatCurrency(invoice.total)}</p>
                     <StatusBadge status={invoice.status} type="payment" />
                   </div>
                 </div>
