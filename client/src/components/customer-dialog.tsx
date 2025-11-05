@@ -31,6 +31,7 @@ import {
 import { insertCustomerSchema, type Customer, type InsertCustomer, type Profile } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
 
 interface CustomerDialogProps {
   open: boolean;
@@ -50,7 +51,7 @@ export function CustomerDialog({ open, onOpenChange, customer }: CustomerDialogP
   const form = useForm<InsertCustomer>({
     resolver: zodResolver(
       customer 
-        ? insertCustomerSchema.omit({ password: true }).extend({ password: insertCustomerSchema.shape.password })
+        ? insertCustomerSchema.extend({ password: z.string().optional().or(z.literal('')) })
         : insertCustomerSchema.required({ password: true })
     ),
     defaultValues: {
