@@ -113,6 +113,7 @@ export const activityLogs = pgTable("activity_logs", {
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
   currencyCode: varchar("currency_code", { length: 3 }).notNull().default('IDR'), // ISO 4217 currency code
+  logoUrl: varchar("logo_url", { length: 500 }),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

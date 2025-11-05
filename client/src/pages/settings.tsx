@@ -14,6 +14,7 @@ import { Loader2 } from "lucide-react";
 export default function Settings() {
   const { toast } = useToast();
   const [selectedCurrency, setSelectedCurrency] = useState<string>("IDR");
+  const [logoUrl, setLogoUrl] = useState<string>("");
 
   const { data: settings, isLoading } = useQuery<Settings>({
     queryKey: ['/api/settings'],
@@ -23,13 +24,16 @@ export default function Settings() {
     if (settings?.currencyCode) {
       setSelectedCurrency(settings.currencyCode);
     }
+    if (settings?.logoUrl) {
+      setLogoUrl(settings.logoUrl);
+    }
   }, [settings]);
 
   const updateSettingsMutation = useMutation({
-    mutationFn: async (currencyCode: string) => {
+    mutationFn: async (data: { currencyCode?: string; logoUrl?: string }) => {
       const res = await fetch('/api/settings', {
         method: 'PATCH',
-        body: JSON.stringify({ currencyCode }),
+        body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) throw new Error('Failed to update settings');
@@ -39,7 +43,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
       toast({
         title: "Settings updated",
-        description: "Currency preference has been saved successfully.",
+        description: "Settings have been saved successfully.",
       });
     },
     onError: (error: Error) => {
@@ -52,7 +56,11 @@ export default function Settings() {
   });
 
   const handleCurrencySave = () => {
-    updateSettingsMutation.mutate(selectedCurrency);
+    updateSettingsMutation.mutate({ currencyCode: selectedCurrency });
+  };
+
+  const handleLogoSave = () => {
+    updateSettingsMutation.mutate({ logoUrl });
   };
 
   return (
@@ -61,6 +69,65 @@ export default function Settings() {
         <h1 className="text-2xl font-semibold" data-testid="heading-settings">Settings</h1>
         <p className="text-sm text-muted-foreground">Configure your ISP management system</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Company Branding</CardTitle>
+          <CardDescription>Upload or provide a URL for your company logo</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="logo-url">Logo URL</Label>
+                <Input 
+                  id="logo-url" 
+                  placeholder="https://example.com/logo.png"
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  data-testid="input-logo-url"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Enter a URL to your company logo. This will appear in the sidebar and on invoices.
+                </p>
+              </div>
+              {logoUrl && (
+                <div className="space-y-2">
+                  <Label>Logo Preview</Label>
+                  <div className="flex items-center gap-4 rounded-md border border-border p-4">
+                    <img 
+                      src={logoUrl} 
+                      alt="Company logo preview" 
+                      className="h-12 w-12 object-contain"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                      data-testid="img-logo-preview"
+                    />
+                    <span className="text-sm text-muted-foreground">Your logo will appear like this</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button 
+                  onClick={handleLogoSave}
+                  disabled={updateSettingsMutation.isPending}
+                  data-testid="button-save-logo"
+                >
+                  {updateSettingsMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Save Logo
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
