@@ -102,7 +102,8 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
     form.setValue("subscriptionId", undefined);
     form.setValue("amount", "0.00");
     form.setValue("notes", "");
-  }, [formCustomerId, customers, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formCustomerId, customers]);
 
   // Auto-populate form when subscription is selected
   useEffect(() => {
@@ -122,7 +123,8 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
         form.setValue("notes", `${profile.name} - ${profile.validityDays} days\nInstallation: ${subscription.installationAddress}\nDownload: ${profile.downloadSpeed} Mbps, Upload: ${profile.uploadSpeed} Mbps\nData Quota: ${quotaText}`);
       }
     }
-  }, [subscriptionId, subscriptions, profiles, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscriptionId, subscriptions, profiles]);
 
   // Auto-calculate total when amount or tax changes
   useEffect(() => {
@@ -130,7 +132,8 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
     const totalAmount = amount + taxAmount;
     form.setValue("tax", taxAmount.toFixed(2));
     form.setValue("total", totalAmount.toFixed(2));
-  }, [amount, taxPercentage, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, taxPercentage]);
 
   // Reset form and generate fresh data when dialog opens (useLayoutEffect for synchronous update)
   useLayoutEffect(() => {
@@ -155,7 +158,8 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
         taxPercentage: 0,
       });
     }
-  }, [open, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const createMutation = useMutation({
     mutationFn: (data: InsertInvoice) => apiRequest("POST", "/api/invoices", data),

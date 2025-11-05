@@ -124,6 +124,14 @@ npm run db:push
 - **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
 
 ## Recent Changes
+- 2025-11-05: **LOGO UPLOAD/URL FEATURE COMPLETE** - Company branding with logo support implemented
+  - ✅ Database: Added logoUrl field to settings table
+  - ✅ Settings Page: Logo URL input with live preview functionality
+  - ✅ AppSidebar: Dynamic logo display (shows logo image when set, falls back to Gauge icon)
+  - ✅ InvoiceDetailDialog: Professional invoice view with company logo for printing/PDF
+  - ✅ Invoices Page: View/Download buttons open invoice detail dialog
+  - ✅ E2E Testing: Logo saves, displays in sidebar/invoices, and can be removed
+  - 📝 Note: Pre-existing "Maximum update depth exceeded" warning in InvoiceDialog (from earlier) - attempted fix by removing 'form' from useEffect dependencies but requires further investigation
 - 2025-11-05: **CURRENCY SELECTION FEATURE COMPLETE** - Worldwide currency support implemented
   - ✅ Database: Added settings table with currencyCode field (default: IDR - Indonesian Rupiah)
   - ✅ Backend: GET/PATCH /api/settings endpoints for currency management
