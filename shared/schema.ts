@@ -188,6 +188,10 @@ export const insertInvoiceSchema = createInsertSchema(invoices, {
   amount: z.string().or(z.number()),
   tax: z.string().or(z.number()).optional(),
   total: z.string().or(z.number()),
+  dueDate: z.coerce.date().optional(),
+  paidDate: z.coerce.date().optional(),
+  billingPeriodStart: z.coerce.date().optional(),
+  billingPeriodEnd: z.coerce.date().optional(),
 }).omit({ id: true, createdAt: true });
 
 export const insertTicketSchema = createInsertSchema(tickets).omit({ 

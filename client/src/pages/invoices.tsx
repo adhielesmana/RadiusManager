@@ -6,9 +6,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { Plus, Search, Download, Eye, DollarSign } from "lucide-react";
 import type { Invoice } from "@shared/schema";
+import { InvoiceDialog } from "@/components/invoice-dialog";
 
 export default function Invoices() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data: invoices = [], isLoading } = useQuery<(Invoice & { customerName: string; profileName?: string })[]>({
     queryKey: ['/api/invoices'],
@@ -26,7 +28,7 @@ export default function Invoices() {
           <h1 className="text-2xl font-semibold" data-testid="heading-invoices">Invoices</h1>
           <p className="text-sm text-muted-foreground">Manage billing and payments</p>
         </div>
-        <Button data-testid="button-generate-invoice">
+        <Button onClick={() => setDialogOpen(true)} data-testid="button-generate-invoice">
           <Plus className="mr-2 h-4 w-4" /> Generate Invoice
         </Button>
       </div>
@@ -115,6 +117,8 @@ export default function Invoices() {
           )}
         </CardContent>
       </Card>
+
+      <InvoiceDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </div>
   );
 }
