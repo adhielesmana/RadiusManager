@@ -41,7 +41,7 @@ export function CustomerDetailsDialog({ open, onOpenChange, customer }: Customer
   const [subscriptionToDelete, setSubscriptionToDelete] = useState<number | null>(null);
 
   const { data: subscriptions = [], isLoading: subscriptionsLoading } = useQuery<(Subscription & { profileName?: string })[]>({
-    queryKey: ['/api/subscriptions', customer?.id],
+    queryKey: ['/api/subscriptions/customer', customer?.id],
     enabled: open && !!customer,
   });
 
@@ -54,7 +54,7 @@ export function CustomerDetailsDialog({ open, onOpenChange, customer }: Customer
     mutationFn: (id: number) => apiRequest("DELETE", `/api/subscriptions/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/subscriptions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/subscriptions', customer?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/subscriptions/customer', customer?.id] });
       queryClient.invalidateQueries({ queryKey: ['/api/subscriptions/expiring'] });
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });

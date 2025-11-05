@@ -74,15 +74,21 @@ Professional ISP management system with FreeRADIUS integration for customer auth
 - **radgroupreply**: Group reply attributes (speed limits, quotas from profiles)
 - **radusergroup**: User to group mapping
 
-## API Endpoints (Planned)
+## API Endpoints
 - `GET /api/dashboard/stats` - Dashboard metrics
 - `GET /api/customers` - List all customers
-- `POST /api/customers` - Create customer
+- `POST /api/customers` - Create customer (identity only, no subscription fields)
 - `PATCH /api/customers/:id` - Update customer
+- `GET /api/subscriptions` - List all subscriptions
+- `GET /api/subscriptions/customer/:customerId` - Get customer's subscriptions
+- `GET /api/subscriptions/expiring` - Get subscriptions expiring within 7 days
+- `POST /api/subscriptions` - Create subscription (auto-calculates expiry)
+- `PATCH /api/subscriptions/:id` - Update subscription
+- `DELETE /api/subscriptions/:id` - Delete subscription
 - `GET /api/profiles` - List service profiles
 - `POST /api/profiles` - Create profile
 - `GET /api/invoices` - List invoices
-- `POST /api/invoices` - Generate invoice
+- `POST /api/invoices` - Generate invoice (requires subscriptionId)
 - `GET /api/tickets` - List tickets
 - `POST /api/tickets` - Create ticket
 
@@ -113,12 +119,17 @@ npm run db:push
 - **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
 
 ## Recent Changes
-- 2025-11-05: **MAJOR SCHEMA REFACTOR** - Implemented subscription-based architecture
-  - Created subscriptions table (customers → subscriptions → profiles)
-  - Added unique constraint on customers.nationalId (one national ID per customer)
-  - Moved installation_address, mac_address, activation_date, expiry_date to subscriptions
-  - Invoices now link to subscriptions instead of profiles directly
-  - Added optional static IP assignment in subscriptions (empty = router auto-assigns)
+- 2025-11-05: **SUBSCRIPTION ARCHITECTURE COMPLETE** - Full subscription-based system implemented
+  - ✅ Backend: Subscription CRUD with RADIUS sync, getExpiringSubscriptions, subscription-specific queries
+  - ✅ Frontend: subscription-dialog.tsx, customer-details-dialog.tsx, updated invoice-dialog.tsx
+  - ✅ RADIUS Integration: syncCustomerCredentials (radcheck), syncSubscriptionToRadius (radreply/radusergroup)
+  - ✅ Cache Management: Fixed query key alignment (['/api/subscriptions/customer', customerId])
+  - ✅ Expiry Logic: Auto-calculate only for new subscriptions, preserve on edits
+  - ✅ Invoice Generation: Subscription-based billing with customer → subscription → profile flow
+  - ✅ Dashboard: Shows expiring subscriptions (not customers), subscription counts per customer
+- 2025-11-05: Created subscriptions table (customers → subscriptions → profiles)
+  - customers.nationalId unique constraint (one national ID per customer)
+  - installation_address, mac_address, activation_date, expiry_date moved to subscriptions
+  - Optional static IP assignment (empty = router auto-assigns, filled = RADIUS uses specified IP)
 - 2025-11-05: Completed payment tracking system with auto-status updates
 - 2025-11-05: Completed invoice generation with auto-numbering and tax calculation
-- 2025-11-05: Initial project setup with complete frontend implementation

@@ -108,7 +108,7 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
     mutationFn: (data: InsertSubscription) => apiRequest("POST", "/api/subscriptions", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/subscriptions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/subscriptions', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/subscriptions/customer', customerId] });
       queryClient.invalidateQueries({ queryKey: ['/api/subscriptions/expiring'] });
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
@@ -131,7 +131,7 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
     mutationFn: (data: InsertSubscription) => apiRequest("PATCH", `/api/subscriptions/${subscription?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/subscriptions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/subscriptions', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/subscriptions/customer', customerId] });
       queryClient.invalidateQueries({ queryKey: ['/api/subscriptions/expiring'] });
       queryClient.invalidateQueries({ queryKey: ['/api/customers'] });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });

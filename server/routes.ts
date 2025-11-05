@@ -83,6 +83,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/subscriptions/expiring", async (_req, res) => {
+    try {
+      const expiringSubscriptions = await storage.getExpiringSubscriptions();
+      res.json(expiringSubscriptions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/subscriptions/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
