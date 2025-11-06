@@ -37,6 +37,61 @@ The system is designed for deployment using Docker Compose, orchestrating Postgr
 
 ## Recent Changes
 
+### 2025-11-06: FTTH Infrastructure Management
+✅ **Complete EPON/GPON equipment management system**
+- Hierarchical FTTH architecture: POP → OLT → PON Port → Distribution Box → ONU → Customer
+- Three-tier management: Points of Presence (POPs), Optical Line Terminals (OLTs), Distribution Boxes (ODPs)
+- Extended OLT schema with telnet/SNMP configuration for ZTE C320 GPON, HIOSO EPON equipment
+- GPS coordinate tracking for physical asset location management
+- Capacity planning with slot/port/ONU counting (8 boxes/PON port, 16 ONUs/box)
+- Professional forms with proper reset logic (no form wipes during background refetches)
+- Admin-only access control with requireAdmin middleware
+- Files created: client/src/pages/ftth/*.tsx, client/src/components/ftth/*-dialog.tsx
+- Database: pops, olts, distributionBoxes tables with referential integrity
+- Architect-approved as production-ready
+
+**FTTH Architecture:**
+```
+POP (Point of Presence)
+└─ OLT (Optical Line Terminal - e.g., ZTE C320)
+   └─ PON Port (e.g., slot 1, port 1)
+      └─ Distribution Box/ODP (slots 0-7, max 8 per PON)
+         └─ ONU (max 16 per box)
+            └─ Customer Subscription
+```
+
+**Features:**
+1. **POPs Management**
+   - Create/edit/delete physical locations (central offices, data centers)
+   - GPS coordinates (latitude/longitude) for mapping
+   - Contact person and phone number tracking
+   - Active/inactive status management
+   - Unique POP codes for identification
+
+2. **OLTs Management**
+   - Support for multiple vendors: ZTE, HIOSO, Huawei, Fiberhome, Nokia
+   - Extended schema with telnet configuration (port 23 default)
+   - SNMP configuration (port 161 default, community string)
+   - Capacity tracking: total PON slots, ports per slot
+   - IP address management for remote access
+   - Model and description fields for documentation
+   - Active/inactive status with POP assignment
+
+3. **Distribution Boxes (ODPs)**
+   - PON port and slot index assignment (0-7, max 8 per PON)
+   - GPS coordinates for field technician navigation
+   - Physical address tracking
+   - Unique box codes for identification
+   - Active/inactive status with OLT assignment
+   - Capacity: 16 ONUs per distribution box
+
+**Technical Implementation:**
+- Form reset pattern: `useEffect([open, entity?.id, form])` prevents unwanted resets
+- All dialogs properly populate when editing and clear when creating
+- Delete operations include explicit form.reset() calls
+- Backward compatibility maintained with nullable extended OLT fields
+- Schema synced to database using `npm run db:push --force`
+
 ### 2025-11-06: Router/NAS Management
 ✅ **Complete FreeRADIUS NAS device management**
 - Full CRUD operations for managing routers (Network Access Servers)
