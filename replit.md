@@ -124,14 +124,23 @@ npm run db:push
 - **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
 
 ## Recent Changes
-- 2025-11-05: **LOGO UPLOAD/URL FEATURE COMPLETE** - Company branding with logo support implemented
+- 2025-11-06: **LOGO FILE UPLOAD FEATURE COMPLETE** - Direct file upload for company branding
+  - ✅ Database: Changed logoUrl from varchar(500) to text to support base64-encoded images
+  - ✅ Settings Page: File upload interface with drag-and-drop area (replaced URL input)
+  - ✅ Base64 Conversion: Converts uploaded images to data URLs for database storage
+  - ✅ File Validation: Type checking (images only) and size limit (2MB max)
+  - ✅ Auto-Save: Automatically saves logo after upload, no separate save button needed
+  - ✅ Remove/Change: Remove logo button and change logo functionality
+  - ✅ AppSidebar: Displays uploaded logo in sidebar header
+  - ✅ InvoiceDetailDialog: Shows logo on professional invoice view
+  - 📝 Note: Solves hotlink issues - logos stored directly in database as base64
+- 2025-11-05: **LOGO UPLOAD/URL FEATURE** - Company branding with logo support implemented
   - ✅ Database: Added logoUrl field to settings table
   - ✅ Settings Page: Logo URL input with live preview functionality
   - ✅ AppSidebar: Dynamic logo display (shows logo image when set, falls back to Gauge icon)
   - ✅ InvoiceDetailDialog: Professional invoice view with company logo for printing/PDF
   - ✅ Invoices Page: View/Download buttons open invoice detail dialog
-  - ✅ E2E Testing: Logo saves, displays in sidebar/invoices, and can be removed
-  - 📝 Note: Pre-existing "Maximum update depth exceeded" warning in InvoiceDialog (from earlier) - attempted fix by removing 'form' from useEffect dependencies but requires further investigation
+  - 📝 Note: Changed to file upload in next update due to hotlink issues
 - 2025-11-05: **CURRENCY SELECTION FEATURE COMPLETE** - Worldwide currency support implemented
   - ✅ Database: Added settings table with currencyCode field (default: IDR - Indonesian Rupiah)
   - ✅ Backend: GET/PATCH /api/settings endpoints for currency management
