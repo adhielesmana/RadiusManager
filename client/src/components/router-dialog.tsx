@@ -85,17 +85,9 @@ export function RouterDialog({ open, onOpenChange, router }: RouterDialogProps) 
   const mutation = useMutation({
     mutationFn: async (data: InsertNas) => {
       if (isEditing) {
-        return await apiRequest(`/api/nas/${router.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
+        return await apiRequest('PATCH', `/api/nas/${router.id}`, data);
       } else {
-        return await apiRequest('/api/nas', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
+        return await apiRequest('POST', '/api/nas', data);
       }
     },
     onSuccess: () => {
