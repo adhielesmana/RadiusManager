@@ -1,0 +1,276 @@
+#!/bin/bash
+set -e
+
+# ISP Manager - Initial Setup Script
+# This script prepares a new development server for ISP Manager deployment
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Helper functions
+print_header() {
+    echo -e "${BLUE}================================================${NC}"
+    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}================================================${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠ $1${NC}"
+}
+
+print_info() {
+    echo -e "${BLUE}ℹ $1${NC}"
+}
+
+# Check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Main setup function
+main() {
+    print_header "ISP Manager - Development Server Setup"
+    
+    # Check operating system
+    print_info "Detecting operating system..."
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        OS="linux"
+        print_success "Linux detected"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        OS="macos"
+        print_success "macOS detected"
+    else
+        print_error "Unsupported operating system: $OSTYPE"
+        exit 1
+    fi
+    
+    # Check Docker
+    print_header "Checking Docker Installation"
+    if command_exists docker; then
+        DOCKER_VERSION=$(docker --version)
+        print_success "Docker is installed: $DOCKER_VERSION"
+    else
+        print_warning "Docker is not installed"
+        read -p "Do you want to install Docker now? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            install_docker
+        else
+            print_error "Docker is required. Please install it manually from https://docs.docker.com/get-docker/"
+            exit 1
+        fi
+    fi
+    
+    # Check Docker Compose
+    print_header "Checking Docker Compose"
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE_VERSION=$(docker compose version)
+        print_success "Docker Compose is installed: $COMPOSE_VERSION"
+    else
+        print_error "Docker Compose is required but not found"
+        print_info "Please install Docker Compose V2 from https://docs.docker.com/compose/install/"
+        exit 1
+    fi
+    
+    # Check if Docker daemon is running
+    print_header "Checking Docker Daemon"
+    if docker info >/dev/null 2>&1; then
+        print_success "Docker daemon is running"
+    else
+        print_error "Docker daemon is not running"
+        print_info "Please start Docker daemon and try again"
+        exit 1
+    fi
+    
+    # Check ports availability
+    print_header "Checking Port Availability"
+    check_port 5000 "ISP Manager Application"
+    check_port 5432 "PostgreSQL Database"
+    check_port 1812 "FreeRADIUS Authentication"
+    check_port 1813 "FreeRADIUS Accounting"
+    
+    # Setup environment file
+    print_header "Setting Up Environment Configuration"
+    if [ -f .env ]; then
+        print_warning ".env file already exists"
+        read -p "Do you want to regenerate it? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            setup_env_file
+        else
+            print_info "Keeping existing .env file"
+        fi
+    else
+        setup_env_file
+    fi
+    
+    # Create necessary directories
+    print_header "Creating Required Directories"
+    mkdir -p docker/freeradius
+    mkdir -p docker/postgres-init
+    print_success "Directories created"
+    
+    # Check if node_modules exists (for development mode)
+    if [ -f package.json ]; then
+        print_header "Checking Node.js Dependencies"
+        if [ -d node_modules ]; then
+            print_success "Node modules already installed"
+        else
+            print_warning "Node modules not found"
+            if command_exists npm; then
+                read -p "Do you want to install Node.js dependencies for local development? (y/n) " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    npm install
+                    print_success "Node.js dependencies installed"
+                fi
+            fi
+        fi
+    fi
+    
+    # Final summary
+    print_header "Setup Complete!"
+    print_success "Your development server is ready for ISP Manager deployment"
+    echo ""
+    print_info "Next steps:"
+    echo "  1. Review and customize the .env file with your settings"
+    echo "  2. Run './deploy.sh' to build and start the application"
+    echo "  3. Access the application at http://localhost:5000"
+    echo ""
+    print_info "Default credentials:"
+    echo "  Username: adhielesmana"
+    echo "  Password: admin123"
+    echo ""
+}
+
+# Install Docker (Linux only)
+install_docker() {
+    print_info "Installing Docker..."
+    
+    if [[ "$OS" == "linux" ]]; then
+        # Detect Linux distribution
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            DISTRO=$ID
+        else
+            print_error "Cannot detect Linux distribution"
+            exit 1
+        fi
+        
+        case $DISTRO in
+            ubuntu|debian)
+                sudo apt-get update
+                sudo apt-get install -y ca-certificates curl gnupg lsb-release
+                sudo mkdir -p /etc/apt/keyrings
+                curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+                sudo apt-get update
+                sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                sudo systemctl start docker
+                sudo systemctl enable docker
+                print_success "Docker installed successfully"
+                ;;
+            centos|rhel|fedora)
+                sudo yum install -y yum-utils
+                sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+                sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                sudo systemctl start docker
+                sudo systemctl enable docker
+                print_success "Docker installed successfully"
+                ;;
+            *)
+                print_error "Unsupported Linux distribution: $DISTRO"
+                print_info "Please install Docker manually from https://docs.docker.com/get-docker/"
+                exit 1
+                ;;
+        esac
+        
+        # Add current user to docker group
+        print_info "Adding current user to docker group..."
+        sudo usermod -aG docker $USER
+        print_warning "You may need to log out and back in for group changes to take effect"
+    else
+        print_error "Automatic Docker installation is only supported on Linux"
+        print_info "Please install Docker Desktop from https://docs.docker.com/get-docker/"
+        exit 1
+    fi
+}
+
+# Check if a port is available
+check_port() {
+    local PORT=$1
+    local SERVICE=$2
+    
+    if command_exists nc; then
+        if nc -z localhost $PORT 2>/dev/null; then
+            print_warning "Port $PORT ($SERVICE) is already in use"
+        else
+            print_success "Port $PORT ($SERVICE) is available"
+        fi
+    elif command_exists lsof; then
+        if lsof -i:$PORT >/dev/null 2>&1; then
+            print_warning "Port $PORT ($SERVICE) is already in use"
+        else
+            print_success "Port $PORT ($SERVICE) is available"
+        fi
+    else
+        print_info "Cannot check port $PORT (nc or lsof not found)"
+    fi
+}
+
+# Setup .env file
+setup_env_file() {
+    print_info "Creating .env file from template..."
+    
+    if [ ! -f .env.example ]; then
+        print_error ".env.example not found"
+        exit 1
+    fi
+    
+    cp .env.example .env
+    
+    # Generate random secrets
+    print_info "Generating secure random secrets..."
+    
+    # Generate DB password (20 characters)
+    DB_PASS=$(openssl rand -base64 20 | tr -d "=+/" | cut -c1-20)
+    
+    # Generate session secret (32 characters)
+    SESSION_SECRET=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    
+    # Generate RADIUS secret (16 characters)
+    RADIUS_SECRET=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+    
+    # Update .env file
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS requires empty string after -i
+        sed -i '' "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASS/" .env
+        sed -i '' "s/SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SECRET/" .env
+        sed -i '' "s/RADIUS_SECRET=.*/RADIUS_SECRET=$RADIUS_SECRET/" .env
+    else
+        # Linux
+        sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASS/" .env
+        sed -i "s/SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SECRET/" .env
+        sed -i "s/RADIUS_SECRET=.*/RADIUS_SECRET=$RADIUS_SECRET/" .env
+    fi
+    
+    print_success ".env file created with secure random secrets"
+    print_info "You can customize the .env file if needed"
+}
+
+# Run main function
+main
+
+exit 0

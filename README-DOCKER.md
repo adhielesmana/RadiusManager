@@ -46,14 +46,47 @@ This guide explains how to run the complete ISP Manager system with FreeRADIUS a
 
 ## Quick Start
 
-### Prerequisites
+### Automated Setup (Recommended)
+
+For a completely automated setup on a new server, use the provided scripts:
+
+**1. Run initial setup (one-time):**
+```bash
+./setup.sh
+```
+
+This will:
+- ✅ Check and install Docker (if needed on Linux)
+- ✅ Verify Docker Compose installation
+- ✅ Check port availability
+- ✅ Create `.env` file with secure random secrets
+- ✅ Verify all prerequisites
+
+**2. Deploy the application:**
+```bash
+./deploy.sh
+```
+
+This will:
+- ✅ Build Docker images
+- ✅ Start all services (PostgreSQL, FreeRADIUS, ISP Manager)
+- ✅ Wait for services to be ready
+- ✅ Display access information and useful commands
+
+**That's it!** Your ISP Manager is now running at http://localhost:5000
+
+### Manual Setup (Alternative)
+
+If you prefer manual setup or the scripts don't work on your system:
+
+#### Prerequisites
 
 - Docker Engine 20.10+ ([Install Docker](https://docs.docker.com/get-docker/))
 - Docker Compose V2 ([Install Docker Compose](https://docs.docker.com/compose/install/))
 - 2GB+ RAM available for containers
 - Ports 5000, 5432, 1812/udp, 1813/udp available
 
-### 1. Initial Setup
+#### 1. Initial Setup
 
 **Clone or navigate to the project directory:**
 ```bash
@@ -75,21 +108,21 @@ RADIUS_SECRET=your_radius_shared_secret
 
 **Note:** The `RADIUS_SECRET` is automatically used by all RADIUS clients (localhost, Docker network, and custom NAS devices defined in `docker/freeradius/clients.conf`). Changing this value will update the shared secret for all clients system-wide.
 
-### 2. Build and Start All Services
+#### 2. Build and Start All Services
 
 **Start in production mode:**
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 **Start with logs visible (for debugging):**
 ```bash
-docker-compose up
+docker compose up
 ```
 
 **Build and start (forces rebuild):**
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 ### 3. Verify Services
@@ -491,27 +524,94 @@ app:
       max-file: "3"
 ```
 
-## Updating the Application
+## Automated Deployment Scripts
 
-### Pull Latest Code
+### setup.sh - Initial Server Setup
+
+Prepares a new development server for ISP Manager deployment.
+
+**Usage:**
 ```bash
-git pull origin main
+./setup.sh
 ```
 
-### Rebuild and Restart
+**What it does:**
+- Detects operating system (Linux/macOS)
+- Checks Docker installation (offers to install on Linux)
+- Verifies Docker Compose availability
+- Checks if Docker daemon is running
+- Verifies port availability (5000, 5432, 1812, 1813)
+- Creates `.env` file with secure random secrets
+- Creates required directories
+- Optionally installs Node.js dependencies
+
+**Supported Platforms:**
+- Ubuntu/Debian
+- CentOS/RHEL/Fedora
+- macOS (requires Docker Desktop pre-installed)
+
+### deploy.sh - Application Deployment
+
+Builds and deploys the ISP Manager application.
+
+**Usage:**
 ```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+# Standard deployment
+./deploy.sh
+
+# Force rebuild of Docker images
+./deploy.sh --rebuild
+
+# Skip building, just restart services
+./deploy.sh --skip-build
+
+# Show help
+./deploy.sh --help
+```
+
+**What it does:**
+- Checks prerequisites (Docker, Docker Compose, .env)
+- Stops existing containers
+- Builds Docker images (optional)
+- Starts all services
+- Waits for services to be healthy
+- Displays service status and logs
+- Shows access information and useful commands
+
+**Options:**
+- `--rebuild` - Force rebuild of Docker images from scratch
+- `--skip-build` - Skip image building, only restart services
+- `--help` - Display help message
+
+## Updating the Application
+
+### Using Deployment Script (Recommended)
+```bash
+# Pull latest code
+git pull origin main
+
+# Deploy with rebuild
+./deploy.sh --rebuild
+```
+
+### Manual Update
+```bash
+# Pull latest code
+git pull origin main
+
+# Rebuild and restart
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ### Zero-Downtime Update
 ```bash
 # Build new image
-docker-compose build app
+docker compose build app
 
 # Start new container
-docker-compose up -d --no-deps app
+docker compose up -d --no-deps app
 
 # Old container automatically replaced
 ```
