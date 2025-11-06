@@ -129,6 +129,26 @@ export const settings = pgTable("settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Users - System users with authentication (superadmin hardcoded, others in database)
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  password: varchar("password", { length: 255 }).notNull(), // bcrypt hashed
+  role: varchar("role", { length: 20 }).notNull().default('user'), // superadmin, admin, user
+  fullName: text("full_name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Permissions - Menu access control for users
+export const permissions = pgTable("permissions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  menuId: varchar("menu_id", { length: 50 }).notNull(), // dashboard, customers, subscriptions, profiles, invoices, tickets, settings
+  canAccess: boolean("can_access").notNull().default(true),
+});
+
 // FreeRADIUS Tables
 // radcheck - User authentication (username/password)
 export const radcheck = pgTable("radcheck", {
@@ -245,6 +265,17 @@ export const companyGroupsRelations = relations(companyGroups, ({ many }) => ({
   subscriptions: many(subscriptions),
 }));
 
+export const usersRelations = relations(users, ({ many }) => ({
+  permissions: many(permissions),
+}));
+
+export const permissionsRelations = relations(permissions, ({ one }) => ({
+  user: one(users, {
+    fields: [permissions.userId],
+    references: [users.id],
+  }),
+}));
+
 // Insert Schemas
 export const insertCustomerSchema = createInsertSchema(customers, {
   email: z.string().email().optional().or(z.literal('')),
@@ -300,6 +331,16 @@ export const insertSettingsSchema = createInsertSchema(settings).omit({
   updatedAt: true,
 });
 
+export const insertUserSchema = createInsertSchema(users).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+});
+
+export const insertPermissionSchema = createInsertSchema(permissions).omit({ 
+  id: true,
+});
+
 // Types
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -327,6 +368,12 @@ export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 
 export type CompanyGroup = typeof companyGroups.$inferSelect;
 export type InsertCompanyGroup = z.infer<typeof insertCompanyGroupSchema>;
+
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
+export type Permission = typeof permissions.$inferSelect;
+export type InsertPermission = z.infer<typeof insertPermissionSchema>;
 
 export type Radcheck = typeof radcheck.$inferSelect;
 export type Radreply = typeof radreply.$inferSelect;
