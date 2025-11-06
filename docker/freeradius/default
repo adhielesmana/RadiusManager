@@ -1,0 +1,70 @@
+# FreeRADIUS Default Virtual Server Configuration
+# Handles authentication and accounting requests
+
+server default {
+    listen {
+        type = auth
+        ipaddr = *
+        port = 1812
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
+    }
+
+    listen {
+        type = acct
+        ipaddr = *
+        port = 1813
+        limit {
+            max_connections = 16
+            lifetime = 0
+            idle_timeout = 30
+        }
+    }
+
+    authorize {
+        filter_username
+        preprocess
+        
+        # Check SQL database for user credentials
+        sql
+        
+        # Allow authentication
+        if (ok || updated) {
+            update control {
+                &Auth-Type := Accept
+            }
+        }
+        
+        pap
+    }
+
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+    }
+
+    preacct {
+        preprocess
+        acct_unique
+        suffix
+    }
+
+    accounting {
+        # Log accounting to SQL database
+        sql
+    }
+
+    post-auth {
+        # Log successful authentications to SQL
+        sql
+        
+        Post-Auth-Type REJECT {
+            # Log failed authentications to SQL
+            sql
+        }
+    }
+}

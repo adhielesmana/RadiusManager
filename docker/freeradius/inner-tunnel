@@ -1,0 +1,39 @@
+# FreeRADIUS Inner Tunnel Virtual Server
+# Used for EAP-TTLS and PEAP inner authentication
+
+server inner-tunnel {
+    listen {
+        type = auth
+        ipaddr = 127.0.0.1
+        port = 18120
+    }
+
+    authorize {
+        filter_username
+        
+        # Check SQL database
+        sql
+        
+        if (ok || updated) {
+            update control {
+                &Auth-Type := Accept
+            }
+        }
+        
+        pap
+    }
+
+    authenticate {
+        Auth-Type PAP {
+            pap
+        }
+    }
+
+    post-auth {
+        sql
+        
+        Post-Auth-Type REJECT {
+            sql
+        }
+    }
+}

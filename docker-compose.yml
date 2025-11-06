@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database - Shared by ISP Manager and FreeRADIUS
+  postgres:
+    image: postgres:15-alpine
+    container_name: isp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ispmanager
+      POSTGRES_USER: ispuser
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-isppass123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d
+    networks:
+      - isp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ispuser -d ispmanager"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FreeRADIUS Server with PostgreSQL Backend
+  freeradius:
+    image: freeradius/freeradius-server:latest
+    container_name: isp-freeradius
+    restart: unless-stopped
+    ports:
+      - "1812:1812/udp"  # Authentication
+      - "1813:1813/udp"  # Accounting
+      - "18120:18120"     # Status server (optional)
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=ispuser
+      - DB_PASS=${DB_PASSWORD:-isppass123}
+      - DB_NAME=ispmanager
+      - RADIUS_SECRET=${RADIUS_SECRET:-testing123}
+    volumes:
+      - ./docker/freeradius/clients.conf:/etc/raddb/clients.conf:ro
+      - ./docker/freeradius/sql:/etc/raddb/mods-available/sql:ro
+      - ./docker/freeradius/default:/etc/raddb/sites-available/default:ro
+      - ./docker/freeradius/inner-tunnel:/etc/raddb/sites-available/inner-tunnel:ro
+      - ./docker/freeradius/docker-entrypoint.sh:/docker-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - isp-network
+
+  # ISP Manager Application (Node.js + React)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: isp-manager-app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - DATABASE_URL=postgresql://ispuser:${DB_PASSWORD:-isppass123}@postgres:5432/ispmanager
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=ispuser
+      - PGPASSWORD=${DB_PASSWORD:-isppass123}
+      - PGDATABASE=ispmanager
+      - SESSION_SECRET=${SESSION_SECRET:-change-this-in-production}
+      - RADIUS_HOST=freeradius
+      - RADIUS_SECRET=${RADIUS_SECRET:-testing123}
+    volumes:
+      # Mount for development (comment out for production)
+      - ./client:/app/client
+      - ./server:/app/server
+      - ./shared:/app/shared
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      freeradius:
+        condition: service_started
+    networks:
+      - isp-network
+
+volumes:
+  postgres-data:
+    driver: local
+
+networks:
+  isp-network:
+    driver: bridge

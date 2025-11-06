@@ -1,0 +1,46 @@
+# FreeRADIUS SQL Module Configuration for PostgreSQL
+# Connects FreeRADIUS to the shared PostgreSQL database
+
+sql {
+    driver = "rlm_sql_postgresql"
+    dialect = "postgresql"
+
+    # Database connection settings (using environment variables)
+    server = "${ENV::DB_HOST}"
+    port = ${ENV::DB_PORT}
+    login = "${ENV::DB_USER}"
+    password = "${ENV::DB_PASS}"
+    radius_db = "${ENV::DB_NAME}"
+
+    # Connection pool configuration
+    pool {
+        start = 5
+        min = 4
+        max = 10
+        spare = 3
+        uses = 0
+        lifetime = 0
+        idle_timeout = 60
+        connect_timeout = 3.0
+    }
+
+    # Enable reading NAS clients from database
+    read_clients = yes
+    client_table = "nas"
+
+    # Table names for RADIUS data
+    acct_table1 = "radacct"
+    acct_table2 = "radacct"
+    postauth_table = "radpostauth"
+    authcheck_table = "radcheck"
+    authreply_table = "radreply"
+    groupcheck_table = "radgroupcheck"
+    groupreply_table = "radgroupreply"
+    usergroup_table = "radusergroup"
+
+    # Delete stale sessions from database
+    delete_stale_sessions = yes
+
+    # Query configuration file
+    $INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+}

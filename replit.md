@@ -1,206 +1,81 @@
 # ISP Manager - FreeRADIUS Customer Management System
 
 ## Overview
-Professional ISP management system with FreeRADIUS integration for customer authentication, billing, service profiles, and support ticketing.
+ISP Manager is a professional management system designed for Internet Service Providers. It integrates with FreeRADIUS for robust customer authentication and offers comprehensive modules for customer relationship management, service profile configuration, billing, payment tracking, and support ticketing. The system aims to streamline ISP operations, enhance customer service, and provide real-time insights into network performance and revenue.
 
-## Features
-- **Dashboard**: Real-time metrics showing total customers, active users, revenue, and pending tickets
-- **Customer Management**: Complete CRUD operations with authentication details, contact info, and installation data
-- **Service Profiles**: Speed plans with quotas, FUP settings, validity periods, and pricing
-- **Invoice Generation**: Professional billing with payment status tracking
-- **Payment Tracking**: Full payment history with automatic invoice status updates
-- **Ticketing System**: Support ticket management with priority levels and status tracking
-- **FreeRADIUS Integration**: Full RADIUS authentication with user and group attributes
-- **Activity Logging**: Complete audit trail of customer changes
-- **Status Management**: Automatic customer status updates (Active/Suspended/Expired)
-- **Currency Selection**: Worldwide currency support (48+ currencies) with Indonesian Rupiah (Rp) as default
+## User Preferences
+I prefer iterative development with clear, modular code. Please ask for clarification if a task is unclear. I value detailed explanations for complex features or architectural decisions. Do not make changes to the `shared/schema.ts` file without explicit instruction.
 
-## Technology Stack
-- **Frontend**: React, TypeScript, Tailwind CSS, Shadcn UI
-- **Backend**: Express.js, Node.js
-- **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: FreeRADIUS integration (radcheck, radreply, radgroupcheck, radgroupreply)
-- **State Management**: TanStack Query (React Query)
+## System Architecture
+The application follows a client-server architecture. The frontend is built with React, TypeScript, Tailwind CSS, and Shadcn UI, emphasizing a professional blue color palette and Inter typography, with JetBrains Mono for technical data. The layout uses sidebar navigation and responsive data tables. Core UI components are standardized, including status indicators for customer, payment, and ticket statuses.
 
-## Project Structure
-```
-├── client/                  # Frontend React application
-│   ├── src/
-│   │   ├── components/      # Reusable UI components
-│   │   │   ├── app-sidebar.tsx
-│   │   │   ├── customer-dialog.tsx
-│   │   │   ├── profile-dialog.tsx
-│   │   │   ├── ticket-dialog.tsx
-│   │   │   ├── status-badge.tsx
-│   │   │   └── metric-card.tsx
-│   │   ├── pages/          # Page components
-│   │   │   ├── dashboard.tsx
-│   │   │   ├── customers.tsx
-│   │   │   ├── profiles.tsx
-│   │   │   ├── invoices.tsx
-│   │   │   ├── tickets.tsx
-│   │   │   └── settings.tsx
-│   │   └── App.tsx         # Main app with routing
-├── server/                 # Backend Express server
-│   ├── db.ts              # Database connection
-│   ├── storage.ts         # Data access layer
-│   └── routes.ts          # API endpoints
-├── shared/                # Shared types and schemas
-│   └── schema.ts          # Drizzle schemas and types
-└── design_guidelines.md   # UI/UX design specifications
+The backend is developed using Node.js with Express.js, leveraging PostgreSQL as the primary database managed by Drizzle ORM. Authentication is handled via FreeRADIUS, which integrates directly with PostgreSQL tables (`radcheck`, `radreply`, `radgroupcheck`, `radgroupreply`, `radusergroup`) for user and group attribute management.
 
-## Database Schema
+Key business logic revolves around:
+- **Customer Management**: Unique by national ID, customers can have multiple subscriptions.
+- **Subscription Management**: Links customers to service profiles at specific locations, including optional static IP and MAC binding.
+- **Service Profiles**: Define speed, quota, FUP settings, and pricing.
+- **Invoicing & Payments**: Subscription-based billing with atomic invoice generation (INVYYMMDDNNNNN format), tax calculation, and automatic payment status updates.
+- **Ticketing System**: Manages support requests with priority and status tracking.
+- **Activity Logging**: Provides an audit trail for all customer changes.
+- **Settings**: Global application settings, including currency selection (default: IDR) and company logo management (stored as base64).
+- **Authentication System**: Features user management with role-based access control (Superadmin, Admin, User), session management via HTTP-only cookies, and protected routes. A hardcoded superadmin exists for initial setup.
+- **Company Group System**: Allows for multi-company group management, influencing subscription ID generation.
 
-### Core Business Logic
-**One customer (unique by national ID) can have multiple subscriptions at different locations.**
+The system is designed for deployment using Docker Compose, orchestrating PostgreSQL, FreeRADIUS, and the ISP Manager application.
 
-### Core Tables
-- **customers**: Customer information (unique by nationalId). No direct link to profiles - customers have subscriptions instead
-- **subscriptions**: Links customers to service profiles at specific locations. Includes optional static IP assignment and MAC address binding
-- **profiles**: Service plans with speed, quota, FUP, and pricing
-- **invoices**: Billing records linked to specific subscriptions (not just customers)
-- **payments**: Payment records against invoices with automatic status updates
-- **tickets**: Support tickets with priority and status tracking
-- **activityLogs**: Audit trail of all customer changes
-- **settings**: Application settings including currency preference (default: IDR)
-
-### Key Relationships
-- `customers` → (one-to-many) → `subscriptions`
-- `subscriptions` → (many-to-one) → `profiles`
-- `subscriptions` → (one-to-many) → `invoices`
-- `customers` → (one-to-many) → `invoices`
-
-### FreeRADIUS Tables
-- **radcheck**: User authentication attributes (username/password)
-- **radreply**: User-specific RADIUS reply attributes (static IP if specified in subscription)
-- **radgroupcheck**: Group authentication attributes
-- **radgroupreply**: Group reply attributes (speed limits, quotas from profiles)
-- **radusergroup**: User to group mapping
-
-## API Endpoints
-- `GET /api/dashboard/stats` - Dashboard metrics
-- `GET /api/customers` - List all customers
-- `POST /api/customers` - Create customer (identity only, no subscription fields)
-- `PATCH /api/customers/:id` - Update customer
-- `GET /api/subscriptions` - List all subscriptions
-- `GET /api/subscriptions/customer/:customerId` - Get customer's subscriptions
-- `GET /api/subscriptions/expiring` - Get subscriptions expiring within 7 days
-- `POST /api/subscriptions` - Create subscription (auto-generates subscription ID)
-- `PATCH /api/subscriptions/:id` - Update subscription
-- `DELETE /api/subscriptions/:id` - Delete subscription
-- `GET /api/company-groups` - List all company groups
-- `GET /api/company-groups/:id` - Get company group by ID
-- `POST /api/company-groups` - Create company group
-- `PATCH /api/company-groups/:id` - Update company group
-- `GET /api/profiles` - List service profiles
-- `POST /api/profiles` - Create profile
-- `GET /api/invoices` - List invoices
-- `POST /api/invoices` - Generate invoice (requires subscriptionId)
-- `GET /api/tickets` - List tickets
-- `POST /api/tickets` - Create ticket
-- `GET /api/settings` - Get application settings (currency)
-- `PATCH /api/settings` - Update application settings
-
-## Development
-
-### Setup
-```bash
-npm install
-npm run db:push
-npm run dev
-```
-
-### Database Migrations
-```bash
-npm run db:push
-```
-
-## Design System
-- Color Scheme: Professional blue palette with semantic status colors
-- Typography: Inter for UI, JetBrains Mono for technical data
-- Components: Shadcn UI with custom ISP-specific components
-- Layout: Sidebar navigation with responsive data tables
-
-## Status Indicators
-- **Customer Status**: Active (green), Suspended (orange), Expired (red)
-- **Payment Status**: Paid (green), Pending (yellow), Overdue (red)
-- **Ticket Status**: Open (blue), In Progress (purple), Resolved (green), Closed (gray)
-- **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
+## External Dependencies
+- **PostgreSQL**: Relational database used for all application and FreeRADIUS data.
+- **FreeRADIUS**: Open-source RADIUS server for network access control and authentication.
+- **React**: Frontend JavaScript library for building user interfaces.
+- **Node.js/Express.js**: Backend JavaScript runtime and web application framework.
+- **Drizzle ORM**: TypeScript ORM for interacting with PostgreSQL.
+- **Tailwind CSS**: Utility-first CSS framework for styling.
+- **Shadcn UI**: Reusable UI components.
+- **TanStack Query (React Query)**: Data fetching and state management for React.
+- **Docker Compose**: Tool for defining and running multi-container Docker applications.
 
 ## Recent Changes
-- 2025-11-06: **INVOICE NUMBER FORMAT UPDATE** - New atomic generation with date-based format
-  - ✅ Format: INVYYMMDDNNNNN (e.g., INV25110600001 for Nov 6, 2025, sequence #1)
-  - ✅ Atomic SQL generation using CTE to prevent race conditions
-  - ✅ Daily sequence reset (00001-99999)
-  - ✅ Auto-generated on backend, not user-editable
-  - ✅ E2E Tested: Invoice creation and sequence increment verified
-- 2025-11-06: **LOGIN & SIDEBAR LOGO DISPLAY** - Dynamic branding
-  - ✅ Login page displays company logo when set, falls back to Gauge icon
-  - ✅ "ISP Manager" text hidden when company logo exists
-  - ✅ Sidebar displays logo with proper sizing (h-10, max-w-180px)
-  - ✅ Optimized logo dimensions for professional appearance
-- 2025-11-06: **AUTHENTICATION SYSTEM COMPLETE** - Full user management with role-based access control
-  - ✅ Database: Created users table with bcrypt password hashing
-  - ✅ Hardcoded Superadmin: adhielesmana/admin123 (cannot be modified or deleted)
-  - ✅ Session Management: Express-session with HTTP-only cookies, 7-day expiry
-  - ✅ Backend: Login/logout/session endpoints with authentication middleware
-  - ✅ Frontend: Login page, authentication context, protected routes
-  - ✅ User Management: Full CRUD for users (add/edit/delete, superadmin only)
-  - ✅ Role-Based Access: Sidebar filters menus based on user role (superadmin/admin/user)
-  - ✅ E2E Tested: All authentication flows validated - login, user creation, logout, role permissions
-  - 📝 Production TODO: Set SESSION_SECRET env var and use Redis for session store
-- 2025-11-06: **DASHBOARD METRICS UPDATE** - Network performance monitoring
-  - ✅ Updated dashboard to show 4 key metrics: Total Customers, Total Subscriptions, Active Tickets, Network Performance
-  - ✅ Network Performance calculated as: 100% - (active tickets / total customers × 100%)
-  - ✅ Active tickets include both 'open' and 'in_progress' status tickets
-  - ✅ Performance metric clamped between 0-100% and displayed with 2 decimal places
-  - 📝 Example: 6 customers, 1 active ticket = 83.33% network performance
-- 2025-11-06: **MULTI-COMPANY GROUP SYSTEM COMPLETE** - Full subscription ID management with atomic generation
-  - ✅ Database: Created company_groups table and updated subscriptions with subscriptionId + companyGroupId
-  - ✅ Atomic ID Generation: Subscription IDs (YYMMDDXNNNN) generated atomically using CTE to prevent race conditions
-  - ✅ Backend: Company groups CRUD operations and DELETE subscription endpoint
-  - ✅ Frontend: Subscription dialog with company group selection and updated status values
-  - ✅ Subscriptions Page: Complete table view with subscription IDs, customer info, profile, and status
-  - ✅ Settings: Company groups management section with add/edit functionality
-  - ✅ Navigation: Added Subscriptions link to sidebar
-  - 📝 Note: Subscription ID generation uses atomic SQL with CTE to ensure uniqueness under concurrent writes
-- 2025-11-06: **LOGO FILE UPLOAD FEATURE COMPLETE** - Direct file upload for company branding
-  - ✅ Database: Changed logoUrl from varchar(500) to text to support base64-encoded images
-  - ✅ Settings Page: File upload interface with drag-and-drop area (replaced URL input)
-  - ✅ Base64 Conversion: Converts uploaded images to data URLs for database storage
-  - ✅ File Validation: Type checking (images only) and size limit (2MB max)
-  - ✅ Auto-Save: Automatically saves logo after upload, no separate save button needed
-  - ✅ Remove/Change: Remove logo button and change logo functionality
-  - ✅ AppSidebar: Displays uploaded logo in sidebar header
-  - ✅ InvoiceDetailDialog: Shows logo on professional invoice view
-  - 📝 Note: Solves hotlink issues - logos stored directly in database as base64
-- 2025-11-05: **LOGO UPLOAD/URL FEATURE** - Company branding with logo support implemented
-  - ✅ Database: Added logoUrl field to settings table
-  - ✅ Settings Page: Logo URL input with live preview functionality
-  - ✅ AppSidebar: Dynamic logo display (shows logo image when set, falls back to Gauge icon)
-  - ✅ InvoiceDetailDialog: Professional invoice view with company logo for printing/PDF
-  - ✅ Invoices Page: View/Download buttons open invoice detail dialog
-  - 📝 Note: Changed to file upload in next update due to hotlink issues
-- 2025-11-05: **CURRENCY SELECTION FEATURE COMPLETE** - Worldwide currency support implemented
-  - ✅ Database: Added settings table with currencyCode field (default: IDR - Indonesian Rupiah)
-  - ✅ Backend: GET/PATCH /api/settings endpoints for currency management
-  - ✅ Frontend: useCurrency() hook provides currency object and formatCurrency() function
-  - ✅ UI Updates: All money displays (dashboard, profiles, invoices) use dynamic currency formatting
-  - ✅ Type Safety: Decimal field handling in storage layer (string conversions for price/amount/tax/total)
-  - ✅ Currency List: 48+ worldwide currencies including IDR, USD, EUR, GBP, JPY, AUD, etc.
-  - ✅ E2E Testing: All 21 test steps passed - currency changes apply globally across the app
-  - 📝 Note: Console warning about "Maximum update depth exceeded" in InvoiceDialog - non-blocking
-- 2025-11-05: **SUBSCRIPTION ARCHITECTURE COMPLETE** - Full subscription-based system implemented
-  - ✅ Backend: Subscription CRUD with RADIUS sync, getExpiringSubscriptions, subscription-specific queries
-  - ✅ Frontend: subscription-dialog.tsx, customer-details-dialog.tsx, updated invoice-dialog.tsx
-  - ✅ RADIUS Integration: syncCustomerCredentials (radcheck), syncSubscriptionToRadius (radreply/radusergroup)
-  - ✅ Cache Management: Fixed query key alignment (['/api/subscriptions/customer', customerId])
-  - ✅ Expiry Logic: Auto-calculate only for new subscriptions, preserve on edits
-  - ✅ Invoice Generation: Subscription-based billing with customer → subscription → profile flow
-  - ✅ Dashboard: Shows expiring subscriptions (not customers), subscription counts per customer
-- 2025-11-05: Created subscriptions table (customers → subscriptions → profiles)
-  - customers.nationalId unique constraint (one national ID per customer)
-  - installation_address, mac_address, activation_date, expiry_date moved to subscriptions
-  - Optional static IP assignment (empty = router auto-assigns, filled = RADIUS uses specified IP)
-- 2025-11-05: Completed payment tracking system with auto-status updates
-- 2025-11-05: Completed invoice generation with auto-numbering and tax calculation
+
+### 2025-11-06: Docker Deployment Complete
+✅ **Complete dockerization with FreeRADIUS integration**
+- Multi-stage Dockerfile for ISP Manager application
+- Docker Compose orchestrating PostgreSQL, FreeRADIUS, and ISP Manager services
+- FreeRADIUS configured with PostgreSQL SQL backend
+- Shared database for both ISP Manager and FreeRADIUS
+- Auto-initialization of FreeRADIUS tables (radcheck, radreply, radacct, nas, etc.)
+- Environment-based configuration with .env file
+- Comprehensive README-DOCKER.md with setup, testing, and troubleshooting guides
+- Files created: Dockerfile, docker-compose.yml, .env.example, docker/freeradius/*, docker/postgres-init/*
+
+**Quick Start:**
+```bash
+cp .env.example .env
+docker-compose up -d
+```
+
+### 2025-11-06: Invoice Number Format Update
+✅ **New atomic generation with date-based format**
+- Format: INVYYMMDDNNNNN (e.g., INV25110600001 for Nov 6, 2025, sequence #1)
+- Atomic SQL generation using CTE to prevent race conditions
+- Fixed SUBSTRING bug (now correctly extracts all 5 digits from position 10)
+- Daily sequence reset (00001-99999)
+- Auto-generated on backend, not user-editable
+- E2E Tested: Invoice creation and sequence increment verified
+
+### 2025-11-06: Logo Display in Login & Sidebar
+✅ **Dynamic branding with company logo**
+- Login page displays company logo when set, falls back to Gauge icon
+- "ISP Manager" text hidden when company logo exists
+- Sidebar displays logo with proper sizing (h-10, max-w-180px)
+- Optimized logo dimensions for professional appearance
+
+### 2025-11-06: Authentication System
+✅ **Full user management with role-based access control**
+- Database: Created users table with bcrypt password hashing
+- Hardcoded Superadmin: adhielesmana/admin123 (cannot be modified or deleted)
+- Session Management: Express-session with HTTP-only cookies, 7-day expiry
+- Backend: Login/logout/session endpoints with authentication middleware
+- Frontend: Auth context, protected routes, login page, role-based UI
+- Sidebar: Dynamic menu filtering based on user role (superadmin sees all)
+- E2E Tested: Complete authentication flow verified
