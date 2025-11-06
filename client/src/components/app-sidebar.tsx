@@ -1,4 +1,4 @@
-import { Home, Users, Gauge, FileText, Ticket, Settings, Network, Shield, Server, MapPin, Radio, Box, Wifi } from "lucide-react";
+import { Home, Users, Gauge, FileText, Ticket, Settings, Network, Shield, Server, Map, MapPin, Radio, Box, Wifi } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Settings as SettingsType } from "@shared/schema";
@@ -73,6 +73,12 @@ const menuItems = [
 ];
 
 const ftthMenuItems = [
+  {
+    title: "Coverage",
+    url: "/ftth/coverage",
+    icon: Map,
+    roles: ["superadmin", "admin"],
+  },
   {
     title: "POPs",
     url: "/ftth/pops",

@@ -16,9 +16,11 @@ import Tickets from "@/pages/tickets";
 import Settings from "@/pages/settings";
 import Users from "@/pages/users";
 import Routers from "@/pages/routers";
+import CoveragePage from "@/pages/ftth/coverage";
 import PopsPage from "@/pages/ftth/pops";
 import OltsPage from "@/pages/ftth/olts";
 import DistributionBoxesPage from "@/pages/ftth/distribution-boxes";
+import OnusPage from "@/pages/ftth/onus";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { LogOut, User as UserIcon } from "lucide-react";
@@ -35,9 +37,11 @@ function Router() {
       <Route path="/routers" component={Routers} />
       <Route path="/users" component={Users} />
       <Route path="/settings" component={Settings} />
+      <Route path="/ftth/coverage" component={CoveragePage} />
       <Route path="/ftth/pops" component={PopsPage} />
       <Route path="/ftth/olts" component={OltsPage} />
       <Route path="/ftth/distribution-boxes" component={DistributionBoxesPage} />
+      <Route path="/ftth/onus" component={OnusPage} />
       <Route component={NotFound} />
     </Switch>
   );
