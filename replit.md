@@ -85,9 +85,13 @@ Professional ISP management system with FreeRADIUS integration for customer auth
 - `GET /api/subscriptions` - List all subscriptions
 - `GET /api/subscriptions/customer/:customerId` - Get customer's subscriptions
 - `GET /api/subscriptions/expiring` - Get subscriptions expiring within 7 days
-- `POST /api/subscriptions` - Create subscription (auto-calculates expiry)
+- `POST /api/subscriptions` - Create subscription (auto-generates subscription ID)
 - `PATCH /api/subscriptions/:id` - Update subscription
 - `DELETE /api/subscriptions/:id` - Delete subscription
+- `GET /api/company-groups` - List all company groups
+- `GET /api/company-groups/:id` - Get company group by ID
+- `POST /api/company-groups` - Create company group
+- `PATCH /api/company-groups/:id` - Update company group
 - `GET /api/profiles` - List service profiles
 - `POST /api/profiles` - Create profile
 - `GET /api/invoices` - List invoices
@@ -124,6 +128,15 @@ npm run db:push
 - **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
 
 ## Recent Changes
+- 2025-11-06: **MULTI-COMPANY GROUP SYSTEM COMPLETE** - Full subscription ID management with atomic generation
+  - ✅ Database: Created company_groups table and updated subscriptions with subscriptionId + companyGroupId
+  - ✅ Atomic ID Generation: Subscription IDs (YYMMDDXNNNN) generated atomically using CTE to prevent race conditions
+  - ✅ Backend: Company groups CRUD operations and DELETE subscription endpoint
+  - ✅ Frontend: Subscription dialog with company group selection and updated status values
+  - ✅ Subscriptions Page: Complete table view with subscription IDs, customer info, profile, and status
+  - ✅ Settings: Company groups management section with add/edit functionality
+  - ✅ Navigation: Added Subscriptions link to sidebar
+  - 📝 Note: Subscription ID generation uses atomic SQL with CTE to ensure uniqueness under concurrent writes
 - 2025-11-06: **LOGO FILE UPLOAD FEATURE COMPLETE** - Direct file upload for company branding
   - ✅ Database: Changed logoUrl from varchar(500) to text to support base64-encoded images
   - ✅ Settings Page: File upload interface with drag-and-drop area (replaced URL input)

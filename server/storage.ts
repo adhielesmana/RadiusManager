@@ -176,15 +176,53 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSubscription(insertSubscription: InsertSubscription): Promise<Subscription> {
-    // Generate subscription ID using current date as activation date
+    // Generate subscription ID atomically within the insert to prevent race conditions
     const activationDate = new Date();
     const companyGroupId = insertSubscription.companyGroupId || 1;
-    const subscriptionId = await this.generateSubscriptionId(companyGroupId, activationDate);
     
-    const [subscription] = await db
-      .insert(subscriptions)
-      .values({ ...insertSubscription, subscriptionId })
-      .returning();
+    // Format date as YYMMDD
+    const year = activationDate.getFullYear().toString().slice(-2);
+    const month = (activationDate.getMonth() + 1).toString().padStart(2, '0');
+    const day = activationDate.getDate().toString().padStart(2, '0');
+    const datePrefix = `${year}${month}${day}`;
+    
+    // Get company group code
+    const [companyGroup] = await db
+      .select()
+      .from(companyGroups)
+      .where(eq(companyGroups.id, companyGroupId));
+    
+    if (!companyGroup) {
+      throw new Error('Company group not found');
+    }
+    
+    // Use a CTE to calculate the next sequence number and insert atomically
+    // This prevents race conditions by having the database calculate the sequence in a single query
+    const result = await db.execute<Subscription>(sql`
+      WITH next_seq AS (
+        SELECT COALESCE(MAX(CAST(SUBSTRING(subscription_id FROM 8 FOR 4) AS INTEGER)), 0) + 1 AS seq
+        FROM subscriptions
+        WHERE subscription_id LIKE ${datePrefix + companyGroup.code}||'%'
+      )
+      INSERT INTO subscriptions (
+        customer_id, profile_id, company_group_id, installation_address,
+        ip_address, mac_address, status, expiry_date, subscription_id
+      )
+      SELECT 
+        ${insertSubscription.customerId},
+        ${insertSubscription.profileId},
+        ${companyGroupId},
+        ${insertSubscription.installationAddress},
+        ${insertSubscription.ipAddress || null},
+        ${insertSubscription.macAddress || null},
+        ${insertSubscription.status || 'active'},
+        ${insertSubscription.expiryDate || null},
+        ${datePrefix}||${companyGroup.code}||LPAD(seq::text, 4, '0')
+      FROM next_seq
+      RETURNING *
+    `);
+    
+    const subscription = result.rows[0] as Subscription;
     
     // Get customer for RADIUS sync
     const customer = await this.getCustomer(subscription.customerId);
@@ -196,7 +234,7 @@ export class DatabaseStorage implements IStorage {
     await this.logActivity({
       customerId: subscription.customerId,
       action: "subscription_created",
-      description: `Subscription ${subscriptionId} created at ${subscription.installationAddress}`,
+      description: `Subscription ${subscription.subscriptionId} created at ${subscription.installationAddress}`,
     });
     
     return subscription;
@@ -256,41 +294,6 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(subscriptions.expiryDate)
       .limit(5);
-  }
-
-  async generateSubscriptionId(companyGroupId: number, activationDate: Date): Promise<string> {
-    // Get company group code
-    const companyGroup = await this.getCompanyGroup(companyGroupId);
-    if (!companyGroup) {
-      throw new Error(`Company group ${companyGroupId} not found`);
-    }
-
-    // Format: YYMMDDXNNNN
-    const year = activationDate.getFullYear().toString().slice(-2);
-    const month = (activationDate.getMonth() + 1).toString().padStart(2, '0');
-    const day = activationDate.getDate().toString().padStart(2, '0');
-    const datePrefix = `${year}${month}${day}`;
-    const companyCode = companyGroup.code;
-
-    // Get count of subscriptions on this date with this company group
-    const startOfDay = new Date(activationDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(activationDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const existingCount = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(subscriptions)
-      .where(
-        and(
-          eq(subscriptions.companyGroupId, companyGroupId),
-          gte(subscriptions.activationDate, startOfDay),
-          lte(subscriptions.activationDate, endOfDay)
-        )
-      );
-
-    const sequence = (Number(existingCount[0]?.count || 0) + 1).toString().padStart(4, '0');
-    return `${datePrefix}${companyCode}${sequence}`;
   }
 
   async getCompanyGroups(): Promise<CompanyGroup[]> {
