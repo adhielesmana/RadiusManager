@@ -37,6 +37,26 @@ The system is designed for deployment using Docker Compose, orchestrating Postgr
 
 ## Recent Changes
 
+### 2025-11-06: Router/NAS Management
+✅ **Complete FreeRADIUS NAS device management**
+- Full CRUD operations for managing routers (Network Access Servers)
+- Admin-only access control with requireAdmin middleware
+- Secure RADIUS secret management (minimum 8 characters, no default)
+- Router type validation (MikroTik, Cisco, Ubiquiti, Other)
+- Table-based UI with color-coded type badges
+- Form validation with proper error handling
+- Files created: client/src/pages/routers.tsx, client/src/components/router-dialog.tsx
+- Database: nas table with secure schema (no default secrets)
+- Security: All NAS routes protected with requireAdmin (superadmin + admin only)
+- E2E Tested: Create, edit, delete, validation, and RBAC security verified
+
+**Features:**
+- Add/Edit/Delete routers through intuitive UI
+- Configure RADIUS secrets, ports (default 1812), and descriptions
+- Type classification for different router vendors
+- Automatic integration with FreeRADIUS authentication
+- Non-admin users cannot access router management (403 Forbidden)
+
 ### 2025-11-06: Existing Nginx Integration
 ✅ **Seamless integration with servers running existing Nginx**
 - Automatic detection of existing Nginx on ports 80/443
