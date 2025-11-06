@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { insertSubscriptionSchema, type Subscription, type InsertSubscription, type Profile } from "@shared/schema";
+import { insertSubscriptionSchema, type Subscription, type InsertSubscription, type Profile, type CompanyGroup } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar } from "@/components/ui/calendar";
@@ -52,11 +52,17 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
     enabled: open,
   });
 
+  const { data: companyGroups = [] } = useQuery<CompanyGroup[]>({
+    queryKey: ['/api/company-groups'],
+    enabled: open,
+  });
+
   const form = useForm<InsertSubscription>({
     resolver: zodResolver(insertSubscriptionSchema),
     defaultValues: {
       customerId: customerId,
       profileId: undefined,
+      companyGroupId: 1,
       installationAddress: "",
       ipAddress: "",
       macAddress: "",
@@ -85,6 +91,7 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
       form.reset({
         customerId: subscription.customerId,
         profileId: subscription.profileId,
+        companyGroupId: subscription.companyGroupId,
         installationAddress: subscription.installationAddress,
         ipAddress: subscription.ipAddress || "",
         macAddress: subscription.macAddress || "",
@@ -95,6 +102,7 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
       form.reset({
         customerId: customerId,
         profileId: undefined,
+        companyGroupId: 1,
         installationAddress: "",
         ipAddress: "",
         macAddress: "",
@@ -200,27 +208,59 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
                 />
                 <FormField
                   control={form.control}
-                  name="status"
+                  name="companyGroupId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Status *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <FormLabel>Company Group *</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(parseInt(value))}
+                        value={field.value?.toString()}
+                      >
                         <FormControl>
-                          <SelectTrigger data-testid="select-status">
-                            <SelectValue />
+                          <SelectTrigger data-testid="select-company-group">
+                            <SelectValue placeholder="Select company group" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="suspended">Suspended</SelectItem>
-                          <SelectItem value="expired">Expired</SelectItem>
+                          {companyGroups.filter(g => g.isActive).map((group) => (
+                            <SelectItem key={group.id} value={group.id.toString()}>
+                              {group.name} (Code: {group.code})
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
+                      <FormDescription>
+                        Used in subscription ID: YYMMDD{companyGroups.find(g => g.id === field.value)?.code || '1'}NNNN
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="new_request">New Request</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="suspend">Suspend (Unpaid)</SelectItem>
+                        <SelectItem value="dismantle">Dismantle</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}
