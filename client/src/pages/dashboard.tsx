@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MetricCard } from "@/components/metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
-import { Users, DollarSign, Ticket, AlertTriangle, ArrowRight } from "lucide-react";
+import { Users, Ticket, Activity, TrendingUp, ArrowRight, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -14,10 +14,9 @@ export default function Dashboard() {
 
   const { data: stats, isLoading: statsLoading } = useQuery<{
     totalCustomers: number;
-    activeCustomers: number;
-    revenue: number;
-    pendingTickets: number;
-    expiringAccounts: number;
+    totalSubscriptions: number;
+    activeTickets: number;
+    networkPerformance: number;
   }>({
     queryKey: ['/api/dashboard/stats'],
   });
@@ -69,22 +68,22 @@ export default function Dashboard() {
           testId="metric-total-customers"
         />
         <MetricCard
-          title="Active Customers"
-          value={stats?.activeCustomers || 0}
-          icon={Users}
-          testId="metric-active-customers"
+          title="Total Subscriptions"
+          value={stats?.totalSubscriptions || 0}
+          icon={Activity}
+          testId="metric-total-subscriptions"
         />
         <MetricCard
-          title="Revenue This Month"
-          value={formatCurrency(stats?.revenue || 0)}
-          icon={DollarSign}
-          testId="metric-revenue"
-        />
-        <MetricCard
-          title="Pending Tickets"
-          value={stats?.pendingTickets || 0}
+          title="Active Tickets"
+          value={stats?.activeTickets || 0}
           icon={Ticket}
-          testId="metric-pending-tickets"
+          testId="metric-active-tickets"
+        />
+        <MetricCard
+          title="Network Performance"
+          value={`${(stats?.networkPerformance || 100).toFixed(2)}%`}
+          icon={TrendingUp}
+          testId="metric-network-performance"
         />
       </div>
 
@@ -150,7 +149,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
             <CardTitle className="text-base font-medium flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-orange-600" />
+              <Clock className="h-4 w-4 text-orange-600" />
               Expiring Soon
             </CardTitle>
             <Link href="/customers">

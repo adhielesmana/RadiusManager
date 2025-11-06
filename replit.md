@@ -128,6 +128,12 @@ npm run db:push
 - **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
 
 ## Recent Changes
+- 2025-11-06: **DASHBOARD METRICS UPDATE** - Network performance monitoring
+  - ✅ Updated dashboard to show 4 key metrics: Total Customers, Total Subscriptions, Active Tickets, Network Performance
+  - ✅ Network Performance calculated as: 100% - (active tickets / total customers × 100%)
+  - ✅ Active tickets include both 'open' and 'in_progress' status tickets
+  - ✅ Performance metric clamped between 0-100% and displayed with 2 decimal places
+  - 📝 Example: 6 customers, 1 active ticket = 83.33% network performance
 - 2025-11-06: **MULTI-COMPANY GROUP SYSTEM COMPLETE** - Full subscription ID management with atomic generation
   - ✅ Database: Created company_groups table and updated subscriptions with subscriptionId + companyGroupId
   - ✅ Atomic ID Generation: Subscription IDs (YYMMDDXNNNN) generated atomically using CTE to prevent race conditions

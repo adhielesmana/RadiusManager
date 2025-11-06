@@ -1,6 +1,6 @@
 // Storage layer implementation following the javascript_database blueprint
 import { db } from "./db";
-import { eq, desc, gte, lte, sql, and } from "drizzle-orm";
+import { eq, desc, gte, lte, sql, and, or } from "drizzle-orm";
 import {
   customers,
   subscriptions,
@@ -83,10 +83,9 @@ export interface IStorage {
   // Dashboard stats
   getDashboardStats(): Promise<{
     totalCustomers: number;
-    activeCustomers: number;
-    revenue: number;
-    pendingTickets: number;
-    expiringAccounts: number;
+    totalSubscriptions: number;
+    activeTickets: number;
+    networkPerformance: number;
   }>;
   
   // Activity log
@@ -545,40 +544,33 @@ export class DatabaseStorage implements IStorage {
       .select({ count: sql<number>`count(*)::int` })
       .from(customers);
     
-    const [activeCustomersResult] = await db
+    const [totalSubscriptionsResult] = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(customers)
-      .where(eq(customers.status, 'active'));
+      .from(subscriptions);
     
-    const [revenueResult] = await db
-      .select({ total: sql<number>`COALESCE(SUM(CAST(total AS DECIMAL)), 0)::decimal` })
-      .from(invoices)
-      .where(eq(invoices.status, 'paid'));
-    
-    const [pendingTicketsResult] = await db
+    const [activeTicketsResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(tickets)
-      .where(eq(tickets.status, 'open'));
-    
-    const sevenDaysFromNow = new Date();
-    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-    
-    const [expiringAccountsResult] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(subscriptions)
       .where(
-        and(
-          lte(subscriptions.expiryDate, sevenDaysFromNow),
-          gte(subscriptions.expiryDate, new Date())
+        or(
+          eq(tickets.status, 'open'),
+          eq(tickets.status, 'in_progress')
         )
       );
     
+    const totalCustomers = totalCustomersResult?.count || 0;
+    const activeTickets = activeTicketsResult?.count || 0;
+    
+    // Calculate network performance: 100% - (active tickets / total customers × 100%)
+    const networkPerformance = totalCustomers > 0 
+      ? 100 - ((activeTickets / totalCustomers) * 100)
+      : 100;
+    
     return {
-      totalCustomers: totalCustomersResult?.count || 0,
-      activeCustomers: activeCustomersResult?.count || 0,
-      revenue: Number(revenueResult?.total) || 0,
-      pendingTickets: pendingTicketsResult?.count || 0,
-      expiringAccounts: expiringAccountsResult?.count || 0,
+      totalCustomers,
+      totalSubscriptions: totalSubscriptionsResult?.count || 0,
+      activeTickets,
+      networkPerformance: Math.max(0, Math.min(100, networkPerformance)), // Clamp between 0-100
     };
   }
 
