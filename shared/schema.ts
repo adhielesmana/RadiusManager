@@ -233,14 +233,28 @@ export const olts = pgTable("olts", {
   ipAddress: varchar("ip_address", { length: 45 }).notNull().unique(), // IPv4/IPv6
   vendor: varchar("vendor", { length: 50 }).notNull(), // zte, huawei, fiberhome, bdcom, vsol, hioso, etc.
   model: varchar("model", { length: 100 }),
-  oltType: varchar("olt_type", { length: 20 }).notNull(), // gpon, epon
-  managementType: varchar("management_type", { length: 20 }).notNull().default('telnet'), // telnet, ssh, snmp
+  
+  // Legacy fields (kept for backward compatibility)
+  oltType: varchar("olt_type", { length: 20 }), // gpon, epon
+  managementType: varchar("management_type", { length: 20 }).default('telnet'), // telnet, ssh, snmp
   port: integer("port").default(23), // 23 for telnet, 22 for ssh
   username: varchar("username", { length: 100 }),
   password: varchar("password", { length: 255 }), // Encrypted
   enablePassword: varchar("enable_password", { length: 255 }), // For privileged mode (ZTE, Huawei)
-  snmpCommunity: varchar("snmp_community", { length: 50 }), // For SNMP access
+  snmpCommunity: varchar("snmp_community", { length: 50 }).default('public'), // For SNMP access (legacy)
   status: varchar("status", { length: 20 }).notNull().default('active'), // active, inactive, maintenance
+  
+  // New fields for enhanced management
+  telnetEnabled: boolean("telnet_enabled").notNull().default(true),
+  telnetPort: integer("telnet_port").notNull().default(23),
+  telnetUsername: varchar("telnet_username", { length: 100 }).default(''),
+  telnetPassword: varchar("telnet_password", { length: 255 }).default(''),
+  snmpEnabled: boolean("snmp_enabled").notNull().default(true),
+  snmpPort: integer("snmp_port").notNull().default(161),
+  totalPonSlots: integer("total_pon_slots").notNull().default(16),
+  portsPerSlot: integer("ports_per_slot").notNull().default(16),
+  isActive: boolean("is_active").notNull().default(true),
+  
   description: text("description"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -494,14 +508,23 @@ export const insertPopSchema = createInsertSchema(pops, {
 });
 
 export const insertOltSchema = createInsertSchema(olts, {
-  vendor: z.enum(['zte', 'huawei', 'fiberhome', 'bdcom', 'vsol', 'hioso', 'other']),
-  oltType: z.enum(['gpon', 'epon']),
-  managementType: z.enum(['telnet', 'ssh', 'snmp']),
   ipAddress: z.string().ip(),
+  telnetPort: z.number().int().positive().optional().default(23),
+  snmpPort: z.number().int().positive().optional().default(161),
+  totalPonSlots: z.number().int().positive().optional().default(16),
+  portsPerSlot: z.number().int().positive().optional().default(16),
 }).omit({ 
   id: true, 
   createdAt: true, 
   updatedAt: true,
+  // Omit legacy fields from insert (keep for backward compat reading)
+  oltType: true,
+  managementType: true,
+  port: true,
+  username: true,
+  password: true,
+  enablePassword: true,
+  status: true,
 });
 
 export const insertDistributionBoxSchema = createInsertSchema(distributionBoxes, {
