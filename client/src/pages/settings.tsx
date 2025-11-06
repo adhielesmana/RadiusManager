@@ -6,19 +6,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Settings } from "@shared/schema";
+import type { Settings, CompanyGroup } from "@shared/schema";
 import { CURRENCIES } from "@shared/currencies";
 import { useState, useEffect, useRef } from "react";
-import { Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X, Plus, Pencil } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { CompanyGroupDialog } from "@/components/company-group-dialog";
 
 export default function Settings() {
   const { toast } = useToast();
   const [selectedCurrency, setSelectedCurrency] = useState<string>("IDR");
   const [logoUrl, setLogoUrl] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [companyGroupDialogOpen, setCompanyGroupDialogOpen] = useState(false);
+  const [selectedCompanyGroup, setSelectedCompanyGroup] = useState<CompanyGroup | null>(null);
 
   const { data: settings, isLoading } = useQuery<Settings>({
     queryKey: ['/api/settings'],
+  });
+
+  const { data: companyGroups = [], isLoading: groupsLoading } = useQuery<CompanyGroup[]>({
+    queryKey: ['/api/company-groups'],
   });
 
   useEffect(() => {
@@ -323,6 +332,89 @@ export default function Settings() {
           )}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-4">
+          <div>
+            <CardTitle>Company Groups</CardTitle>
+            <CardDescription>Manage company groups for subscription ID generation (YYMMDDXNNNN)</CardDescription>
+          </div>
+          <Button 
+            onClick={() => {
+              setSelectedCompanyGroup(null);
+              setCompanyGroupDialogOpen(true);
+            }}
+            data-testid="button-add-company-group"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Group
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {groupsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : companyGroups.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No company groups yet. Add your first group to organize subscriptions.
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companyGroups.map((group) => (
+                    <TableRow key={group.id} data-testid={`row-company-group-${group.id}`}>
+                      <TableCell className="font-mono font-semibold" data-testid={`text-code-${group.id}`}>
+                        {group.code}
+                      </TableCell>
+                      <TableCell data-testid={`text-name-${group.id}`}>
+                        {group.name}
+                      </TableCell>
+                      <TableCell className="max-w-md text-sm text-muted-foreground" data-testid={`text-description-${group.id}`}>
+                        {group.description || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={group.isActive ? "default" : "secondary"} data-testid={`status-${group.id}`}>
+                          {group.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setSelectedCompanyGroup(group);
+                            setCompanyGroupDialogOpen(true);
+                          }}
+                          data-testid={`button-edit-group-${group.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <CompanyGroupDialog
+        open={companyGroupDialogOpen}
+        onOpenChange={setCompanyGroupDialogOpen}
+        companyGroup={selectedCompanyGroup}
+      />
     </div>
   );
 }
