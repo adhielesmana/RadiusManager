@@ -1,0 +1,53 @@
+# Docker Compose SSL Override
+# This file adds Nginx reverse proxy with Let's Encrypt SSL support
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
+
+version: '3.8'
+
+services:
+  # ISP Manager App - Remove port exposure when using SSL
+  app:
+    ports: []  # Remove direct port 5000 exposure
+    networks:
+      - isp-network
+
+  # Nginx Reverse Proxy with SSL
+  reverse-proxy:
+    build:
+      context: ./docker/nginx
+      dockerfile: Dockerfile
+    container_name: isp-manager-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - APP_DOMAIN=${APP_DOMAIN}
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
+      - LE_STAGING=${LE_STAGING:-false}
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-challenges:/var/www/certbot
+      - nginx-cache:/var/cache/nginx
+    networks:
+      - isp-network
+    depends_on:
+      - app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  letsencrypt:
+    driver: local
+  certbot-challenges:
+    driver: local
+  nginx-cache:
+    driver: local
+
+networks:
+  isp-network:
+    external: true

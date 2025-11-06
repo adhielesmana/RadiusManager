@@ -75,6 +75,23 @@ check_prerequisites() {
     fi
     print_success ".env file exists"
     
+    # Load SSL configuration from .env
+    if [ -f .env ]; then
+        set -a
+        source .env
+        set +a
+        
+        if [ "$ENABLE_SSL" = "true" ]; then
+            COMPOSE_FILES="-f docker-compose.yml -f docker-compose.ssl.yml"
+            SSL_MODE="ENABLED"
+            print_info "SSL Mode: ENABLED (using domain: ${APP_DOMAIN})"
+        else
+            COMPOSE_FILES="-f docker-compose.yml"
+            SSL_MODE="DISABLED"
+            print_info "SSL Mode: DISABLED (local development)"
+        fi
+    fi
+    
     # Check curl (needed for health checks)
     if ! command_exists curl; then
         print_warning "curl not found, will skip application health check"
@@ -88,9 +105,9 @@ check_prerequisites() {
 stop_containers() {
     print_header "Stopping Existing Containers"
     
-    if docker compose ps -q | grep -q .; then
+    if docker compose $COMPOSE_FILES ps -q 2>/dev/null | grep -q .; then
         print_info "Stopping running containers..."
-        docker compose down
+        docker compose $COMPOSE_FILES down
         print_success "Containers stopped"
     else
         print_info "No running containers to stop"
@@ -101,11 +118,11 @@ stop_containers() {
 build_images() {
     print_header "Building Docker Images"
     
-    print_info "Building ISP Manager application image..."
+    print_info "Building Docker images..."
     if [ "$REBUILD" = true ]; then
-        docker compose build --no-cache
+        docker compose $COMPOSE_FILES build --no-cache
     else
-        docker compose build
+        docker compose $COMPOSE_FILES build
     fi
     print_success "Docker images built successfully"
 }
@@ -114,8 +131,13 @@ build_images() {
 start_services() {
     print_header "Starting Services"
     
-    print_info "Starting PostgreSQL, FreeRADIUS, and ISP Manager..."
-    docker compose up -d
+    if [ "$SSL_MODE" = "ENABLED" ]; then
+        print_info "Starting PostgreSQL, FreeRADIUS, ISP Manager, and Nginx (SSL)..."
+    else
+        print_info "Starting PostgreSQL, FreeRADIUS, and ISP Manager..."
+    fi
+    
+    docker compose $COMPOSE_FILES up -d
     print_success "Services started in background"
 }
 
@@ -180,14 +202,20 @@ wait_for_services() {
 # Display service status
 show_status() {
     print_header "Service Status"
-    docker compose ps
+    docker compose $COMPOSE_FILES ps
 }
 
 # Display logs (last 20 lines)
 show_logs() {
     print_header "Recent Logs"
     print_info "Application logs (last 20 lines):"
-    docker compose logs --tail=20 app
+    docker compose $COMPOSE_FILES logs --tail=20 app
+    
+    if [ "$SSL_MODE" = "ENABLED" ]; then
+        echo ""
+        print_info "Nginx logs (last 10 lines):"
+        docker compose $COMPOSE_FILES logs --tail=10 reverse-proxy
+    fi
 }
 
 # Display access information
@@ -195,7 +223,12 @@ show_access_info() {
     print_header "Access Information"
     
     echo -e "${GREEN}ISP Manager Application:${NC}"
-    echo -e "  URL:      ${BLUE}http://localhost:5000${NC}"
+    if [ "$SSL_MODE" = "ENABLED" ]; then
+        echo -e "  URL:      ${BLUE}https://${APP_DOMAIN}${NC}"
+        echo -e "  Note:     ${YELLOW}SSL certificate obtained from Let's Encrypt${NC}"
+    else
+        echo -e "  URL:      ${BLUE}http://localhost:5000${NC}"
+    fi
     echo -e "  Username: ${BLUE}adhielesmana${NC}"
     echo -e "  Password: ${BLUE}admin123${NC}"
     echo ""
@@ -219,18 +252,35 @@ show_access_info() {
 show_commands() {
     print_header "Useful Commands"
     
+    if [ "$SSL_MODE" = "ENABLED" ]; then
+        COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.ssl.yml"
+    else
+        COMPOSE_CMD="docker compose"
+    fi
+    
     echo -e "${GREEN}View logs:${NC}"
-    echo -e "  docker compose logs -f              # All services"
-    echo -e "  docker compose logs -f app          # Application only"
-    echo -e "  docker compose logs -f freeradius   # FreeRADIUS only"
+    echo -e "  ${COMPOSE_CMD} logs -f              # All services"
+    echo -e "  ${COMPOSE_CMD} logs -f app          # Application only"
+    echo -e "  ${COMPOSE_CMD} logs -f freeradius   # FreeRADIUS only"
+    if [ "$SSL_MODE" = "ENABLED" ]; then
+        echo -e "  ${COMPOSE_CMD} logs -f reverse-proxy  # Nginx/SSL logs"
+    fi
     echo ""
     
     echo -e "${GREEN}Manage services:${NC}"
-    echo -e "  docker compose ps                   # Service status"
-    echo -e "  docker compose restart app          # Restart application"
-    echo -e "  docker compose down                 # Stop all services"
-    echo -e "  docker compose down -v              # Stop and remove data"
+    echo -e "  ${COMPOSE_CMD} ps                   # Service status"
+    echo -e "  ${COMPOSE_CMD} restart app          # Restart application"
+    echo -e "  ${COMPOSE_CMD} down                 # Stop all services"
+    echo -e "  ${COMPOSE_CMD} down -v              # Stop and remove data"
     echo ""
+    
+    if [ "$SSL_MODE" = "ENABLED" ]; then
+        echo -e "${GREEN}SSL Certificate Management:${NC}"
+        echo -e "  ${COMPOSE_CMD} exec reverse-proxy certbot renew     # Manual renewal check"
+        echo -e "  ${COMPOSE_CMD} exec reverse-proxy certbot certificates  # View cert info"
+        echo -e "  ${COMPOSE_CMD} logs reverse-proxy | grep certbot    # Check renewal logs"
+        echo ""
+    fi
     
     echo -e "${GREEN}Database access:${NC}"
     echo -e "  docker compose exec postgres psql -U ispuser -d ispmanager"
@@ -306,7 +356,15 @@ main() {
     
     # Final success message
     print_header "Deployment Complete!"
-    print_success "ISP Manager is now running at http://localhost:5000"
+    
+    if [ "$SSL_MODE" = "ENABLED" ]; then
+        print_success "ISP Manager is now running at https://${APP_DOMAIN}"
+        echo ""
+        print_info "SSL certificate status:"
+        docker compose $COMPOSE_FILES exec -T reverse-proxy certbot certificates 2>/dev/null || print_warning "Certificate info not available yet"
+    else
+        print_success "ISP Manager is now running at http://localhost:5000"
+    fi
 }
 
 # Run main function

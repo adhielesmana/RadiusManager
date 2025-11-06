@@ -37,6 +37,39 @@ The system is designed for deployment using Docker Compose, orchestrating Postgr
 
 ## Recent Changes
 
+### 2025-11-06: SSL/Nginx Integration with Domain Support
+✅ **Production-ready SSL deployment with automatic certificates**
+- Nginx reverse proxy with Let's Encrypt SSL support
+- Automatic certificate acquisition and daily renewal
+- HTTP to HTTPS redirect
+- Production-grade security headers (HSTS, CSP, X-Frame-Options, etc.)
+- TLS 1.2/1.3 with modern cipher suites
+- Domain-based deployment via setup.sh flags
+- Staging mode for testing without rate limits
+- SSL certificate management commands
+- Comprehensive SSL troubleshooting guide
+- Files created: docker-compose.ssl.yml, docker/nginx/Dockerfile, docker/nginx/*.sh, docker/nginx/*.template
+
+**Quick Start (Production with SSL):**
+```bash
+./setup.sh --domain isp.example.com --email admin@example.com
+./deploy.sh
+# Access at https://isp.example.com
+```
+
+**Quick Start (Development/Local):**
+```bash
+./setup.sh    # No domain = local mode
+./deploy.sh
+# Access at http://localhost:5000
+```
+
+**Testing SSL (Staging Mode):**
+```bash
+./setup.sh --domain test.example.com --email admin@example.com --staging
+./deploy.sh
+```
+
 ### 2025-11-06: Docker Deployment Complete
 ✅ **Complete dockerization with FreeRADIUS integration**
 - Multi-stage Dockerfile for ISP Manager application
@@ -48,18 +81,6 @@ The system is designed for deployment using Docker Compose, orchestrating Postgr
 - Automated deployment scripts (setup.sh and deploy.sh)
 - Comprehensive README-DOCKER.md with setup, testing, and troubleshooting guides
 - Files created: Dockerfile, docker-compose.yml, .env.example, setup.sh, deploy.sh, docker/freeradius/*, docker/postgres-init/*
-
-**Quick Start (Automated):**
-```bash
-./setup.sh    # One-time setup
-./deploy.sh   # Build and deploy
-```
-
-**Quick Start (Manual):**
-```bash
-cp .env.example .env
-docker compose up -d
-```
 
 ### 2025-11-06: Invoice Number Format Update
 ✅ **New atomic generation with date-based format**

@@ -75,6 +75,49 @@ This will:
 
 **That's it!** Your ISP Manager is now running at http://localhost:5000
 
+### Production Setup with SSL/HTTPS
+
+For production deployment with a custom domain and automatic SSL certificates:
+
+**1. Prepare your domain:**
+- Point your domain's A record to your server's public IP
+- Ensure ports 80 and 443 are open in your firewall
+- Wait for DNS propagation (check with `nslookup your-domain.com`)
+
+**2. Run setup with domain:**
+```bash
+./setup.sh --domain isp.example.com --email admin@example.com
+```
+
+This will:
+- ✅ Configure SSL with Let's Encrypt
+- ✅ Set up Nginx reverse proxy
+- ✅ Generate secure secrets
+- ✅ Validate port availability (80, 443, 5432, 1812, 1813)
+
+**3. Deploy with SSL:**
+```bash
+./deploy.sh
+```
+
+The deployment will:
+- ✅ Start Nginx reverse proxy with SSL
+- ✅ Automatically obtain Let's Encrypt certificates
+- ✅ Configure HTTP to HTTPS redirect
+- ✅ Set up auto-renewal (daily check at 2 AM)
+
+**Your ISP Manager is now running at https://isp.example.com** 🎉
+
+#### Testing SSL Setup (Staging Mode)
+
+To test SSL configuration without hitting Let's Encrypt rate limits:
+
+```bash
+./setup.sh --domain test.example.com --email admin@example.com --staging
+```
+
+This uses Let's Encrypt's staging server, perfect for testing before going to production.
+
 ### Manual Setup (Alternative)
 
 If you prefer manual setup or the scripts don't work on your system:
@@ -399,24 +442,77 @@ app:
 
 ## Troubleshooting
 
+### SSL Certificate Issues
+
+**Certificate not obtained:**
+```bash
+# Check Nginx logs
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml logs reverse-proxy
+
+# Verify DNS points to your server
+nslookup your-domain.com
+
+# Test port 80 accessibility
+curl -I http://your-domain.com/.well-known/acme-challenge/test
+
+# Manual certificate request
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml exec reverse-proxy \
+  certbot certonly --webroot -w /var/www/certbot \
+  -d your-domain.com --email your@email.com --agree-tos
+```
+
+**Certificate expired or needs renewal:**
+```bash
+# Manual renewal
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml exec reverse-proxy certbot renew
+
+# Check renewal status
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml exec reverse-proxy certbot certificates
+
+# View renewal logs
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml exec reverse-proxy cat /var/log/certbot-renew.log
+```
+
+**Switch from staging to production certificates:**
+```bash
+# 1. Update .env file
+sed -i 's/LE_STAGING=true/LE_STAGING=false/' .env
+
+# 2. Remove staging certificates
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml exec reverse-proxy \
+  rm -rf /etc/letsencrypt/live/*
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml exec reverse-proxy \
+  rm -rf /etc/letsencrypt/archive/*
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml exec reverse-proxy \
+  rm -rf /etc/letsencrypt/renewal/*
+
+# 3. Restart to obtain production certificate
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml restart reverse-proxy
+```
+
 ### Container Won't Start
 
 **Check logs:**
 ```bash
-docker-compose logs app
-docker-compose logs freeradius
+docker compose logs app
+docker compose logs freeradius
+# For SSL mode:
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml logs reverse-proxy
 ```
 
 **Check container status:**
 ```bash
-docker-compose ps
+docker compose ps
 docker ps -a
 ```
 
 **Remove and recreate:**
 ```bash
-docker-compose down
-docker-compose up -d --force-recreate
+docker compose down
+docker compose up -d --force-recreate
+# For SSL mode:
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml down
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d --force-recreate
 ```
 
 ### PostgreSQL Connection Issues
@@ -429,12 +525,12 @@ nc -zv postgres 5432
 
 **Check PostgreSQL logs:**
 ```bash
-docker-compose logs postgres
+docker compose logs postgres
 ```
 
 **Verify credentials:**
 ```bash
-docker-compose exec postgres psql -U ispuser -d ispmanager -c "SELECT 1"
+docker compose exec postgres psql -U ispuser -d ispmanager -c "SELECT 1"
 ```
 
 ### FreeRADIUS Not Responding

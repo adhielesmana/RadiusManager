@@ -39,9 +39,83 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Show help message
+show_help() {
+    echo "ISP Manager - Setup Script"
+    echo ""
+    echo "Usage: ./setup.sh [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --domain DOMAIN          Domain name for SSL/HTTPS (e.g., isp.example.com)"
+    echo "  --email EMAIL            Email for Let's Encrypt notifications"
+    echo "  --staging                Use Let's Encrypt staging server (for testing)"
+    echo "  --help                   Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  ./setup.sh                                    # Local development (no SSL)"
+    echo "  ./setup.sh --domain isp.example.com --email admin@example.com"
+    echo "  ./setup.sh --domain test.example.com --email admin@example.com --staging"
+    echo ""
+}
+
 # Main setup function
 main() {
+    # Parse command line arguments
+    SSL_DOMAIN=""
+    SSL_EMAIL=""
+    SSL_STAGING="false"
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --domain)
+                SSL_DOMAIN="$2"
+                shift 2
+                ;;
+            --email)
+                SSL_EMAIL="$2"
+                shift 2
+                ;;
+            --staging)
+                SSL_STAGING="true"
+                shift
+                ;;
+            --help)
+                show_help
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Validate SSL configuration
+    if [ -n "$SSL_DOMAIN" ] && [ -z "$SSL_EMAIL" ]; then
+        print_error "Email is required when using --domain"
+        print_info "Use: ./setup.sh --domain $SSL_DOMAIN --email your@email.com"
+        exit 1
+    fi
+    
+    if [ -z "$SSL_DOMAIN" ] && [ -n "$SSL_EMAIL" ]; then
+        print_error "Domain is required when using --email"
+        print_info "Use: ./setup.sh --domain your-domain.com --email $SSL_EMAIL"
+        exit 1
+    fi
+    
     print_header "ISP Manager - Development Server Setup"
+    
+    # Show SSL status
+    if [ -n "$SSL_DOMAIN" ]; then
+        print_info "SSL Mode: ENABLED"
+        print_info "Domain: $SSL_DOMAIN"
+        print_info "Email: $SSL_EMAIL"
+        print_info "Staging: $SSL_STAGING"
+    else
+        print_info "SSL Mode: DISABLED (Local development)"
+    fi
+    echo ""
     
     # Check operating system
     print_info "Detecting operating system..."
@@ -96,7 +170,12 @@ main() {
     
     # Check ports availability
     print_header "Checking Port Availability"
-    check_port 5000 "ISP Manager Application"
+    if [ -n "$SSL_DOMAIN" ]; then
+        check_port 80 "HTTP (for Let's Encrypt challenges)"
+        check_port 443 "HTTPS"
+    else
+        check_port 5000 "ISP Manager Application"
+    fi
     check_port 5432 "PostgreSQL Database"
     check_port 1812 "FreeRADIUS Authentication"
     check_port 1813 "FreeRADIUS Accounting"
@@ -146,8 +225,16 @@ main() {
     echo ""
     print_info "Next steps:"
     echo "  1. Review and customize the .env file with your settings"
-    echo "  2. Run './deploy.sh' to build and start the application"
-    echo "  3. Access the application at http://localhost:5000"
+    
+    if [ -n "$SSL_DOMAIN" ]; then
+        echo "  2. Ensure DNS for ${SSL_DOMAIN} points to this server"
+        echo "  3. Run './deploy.sh' to build and start the application"
+        echo "  4. Access the application at https://${SSL_DOMAIN}"
+    else
+        echo "  2. Run './deploy.sh' to build and start the application"
+        echo "  3. Access the application at http://localhost:5000"
+    fi
+    
     echo ""
     print_info "Default credentials:"
     echo "  Username: adhielesmana"
@@ -248,29 +335,62 @@ setup_env_file() {
     DB_PASS=$(openssl rand -base64 20 | tr -d "=+/" | cut -c1-20)
     
     # Generate session secret (32 characters)
-    SESSION_SECRET=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
+    SESSION_SEC=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
     
     # Generate RADIUS secret (16 characters)
-    RADIUS_SECRET=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+    RADIUS_SEC=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
     
     # Update .env file
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS requires empty string after -i
         sed -i '' "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASS/" .env
-        sed -i '' "s/SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SECRET/" .env
-        sed -i '' "s/RADIUS_SECRET=.*/RADIUS_SECRET=$RADIUS_SECRET/" .env
+        sed -i '' "s/SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SEC/" .env
+        sed -i '' "s/RADIUS_SECRET=.*/RADIUS_SECRET=$RADIUS_SEC/" .env
+        
+        # Configure SSL if domain provided
+        if [ -n "$SSL_DOMAIN" ]; then
+            sed -i '' "s/ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            sed -i '' "s/APP_DOMAIN=.*/APP_DOMAIN=$SSL_DOMAIN/" .env
+            sed -i '' "s/LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$SSL_EMAIL/" .env
+            sed -i '' "s/LE_STAGING=.*/LE_STAGING=$SSL_STAGING/" .env
+        fi
     else
         # Linux
         sed -i "s/DB_PASSWORD=.*/DB_PASSWORD=$DB_PASS/" .env
-        sed -i "s/SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SECRET/" .env
-        sed -i "s/RADIUS_SECRET=.*/RADIUS_SECRET=$RADIUS_SECRET/" .env
+        sed -i "s/SESSION_SECRET=.*/SESSION_SECRET=$SESSION_SEC/" .env
+        sed -i "s/RADIUS_SECRET=.*/RADIUS_SECRET=$RADIUS_SEC/" .env
+        
+        # Configure SSL if domain provided
+        if [ -n "$SSL_DOMAIN" ]; then
+            sed -i "s/ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            sed -i "s/APP_DOMAIN=.*/APP_DOMAIN=$SSL_DOMAIN/" .env
+            sed -i "s/LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$SSL_EMAIL/" .env
+            sed -i "s/LE_STAGING=.*/LE_STAGING=$SSL_STAGING/" .env
+        fi
     fi
     
     print_success ".env file created with secure random secrets"
+    
+    # Show SSL reminder if enabled
+    if [ -n "$SSL_DOMAIN" ]; then
+        echo ""
+        print_warning "SSL/HTTPS is ENABLED"
+        print_info "Before deploying, ensure:"
+        echo "  1. DNS A/AAAA record for ${SSL_DOMAIN} points to this server's IP"
+        echo "  2. Ports 80 and 443 are accessible from the internet"
+        echo "  3. No firewall blocking Let's Encrypt validation"
+        echo ""
+        print_info "SSL Configuration:"
+        echo "  Domain:  ${SSL_DOMAIN}"
+        echo "  Email:   ${SSL_EMAIL}"
+        echo "  Staging: ${SSL_STAGING}"
+        echo ""
+    fi
+    
     print_info "You can customize the .env file if needed"
 }
 
 # Run main function
-main
+main "$@"
 
 exit 0
