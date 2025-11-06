@@ -21,74 +21,86 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { insertPopSchema, type Pop, type InsertPop } from "@shared/schema";
-import { Loader2 } from "lucide-react";
+import { insertDistributionBoxSchema, type DistributionBox, type InsertDistributionBox, type Olt } from "@shared/schema";
+import { Loader2, Info } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface PopDialogProps {
+interface DistributionBoxDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  pop?: Pop | null;
+  distributionBox?: DistributionBox | null;
+  olts: Olt[];
 }
 
-export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
+export function DistributionBoxDialog({ open, onOpenChange, distributionBox, olts }: DistributionBoxDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isEditing = !!pop;
+  const isEditing = !!distributionBox;
 
-  const form = useForm<InsertPop>({
-    resolver: zodResolver(insertPopSchema),
+  const form = useForm<InsertDistributionBox>({
+    resolver: zodResolver(insertDistributionBoxSchema),
     defaultValues: {
       name: "",
       code: "",
-      address: "",
+      oltId: olts[0]?.id ?? 0,
+      ponPort: "",
+      ponSlotIndex: 0,
       latitude: "",
       longitude: "",
-      contactPerson: "",
-      contactPhone: "",
+      address: "",
       description: "",
       isActive: true,
     },
   });
 
   useEffect(() => {
-    if (open && pop) {
+    if (open && distributionBox) {
       form.reset({
-        name: pop.name || "",
-        code: pop.code || "",
-        address: pop.address || "",
-        latitude: pop.latitude || "",
-        longitude: pop.longitude || "",
-        contactPerson: pop.contactPerson || "",
-        contactPhone: pop.contactPhone || "",
-        description: pop.description || "",
-        isActive: pop.isActive ?? true,
+        name: distributionBox.name ?? "",
+        code: distributionBox.code ?? "",
+        oltId: distributionBox.oltId ?? (olts[0]?.id ?? 0),
+        ponPort: distributionBox.ponPort ?? "",
+        ponSlotIndex: distributionBox.ponSlotIndex ?? 0,
+        latitude: distributionBox.latitude ?? "",
+        longitude: distributionBox.longitude ?? "",
+        address: distributionBox.address ?? "",
+        description: distributionBox.description ?? "",
+        isActive: distributionBox.isActive ?? true,
       });
-    } else if (open && !pop) {
+    } else if (open && !distributionBox) {
       form.reset({
         name: "",
         code: "",
-        address: "",
+        oltId: olts[0]?.id ?? 0,
+        ponPort: "",
+        ponSlotIndex: 0,
         latitude: "",
         longitude: "",
-        contactPerson: "",
-        contactPhone: "",
+        address: "",
         description: "",
         isActive: true,
       });
     }
-  }, [open, pop?.id, form]);
+  }, [open, distributionBox?.id, form]);
 
   const createMutation = useMutation({
-    mutationFn: (data: InsertPop) => apiRequest('/api/pops', 'POST', data),
+    mutationFn: (data: InsertDistributionBox) => apiRequest('/api/distribution-boxes', 'POST', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/pops'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/distribution-boxes'] });
       toast({
-        title: "POP Created",
-        description: "The Point of Presence has been created successfully.",
+        title: "Distribution Box Created",
+        description: "The distribution box has been created successfully.",
       });
       onOpenChange(false);
       form.reset();
@@ -97,18 +109,18 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to create POP",
+        description: error.message || "Failed to create distribution box",
       });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: InsertPop) => apiRequest(`/api/pops/${pop?.id}`, 'PATCH', data),
+    mutationFn: (data: InsertDistributionBox) => apiRequest(`/api/distribution-boxes/${distributionBox?.id}`, 'PATCH', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/pops'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/distribution-boxes'] });
       toast({
-        title: "POP Updated",
-        description: "The Point of Presence has been updated successfully.",
+        title: "Distribution Box Updated",
+        description: "The distribution box has been updated successfully.",
       });
       onOpenChange(false);
     },
@@ -116,19 +128,19 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to update POP",
+        description: error.message || "Failed to update distribution box",
       });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => apiRequest(`/api/pops/${pop?.id}`, 'DELETE'),
+    mutationFn: () => apiRequest(`/api/distribution-boxes/${distributionBox?.id}`, 'DELETE'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/pops'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/distribution-boxes'] });
       form.reset();
       toast({
-        title: "POP Deleted",
-        description: "The Point of Presence has been deleted successfully.",
+        title: "Distribution Box Deleted",
+        description: "The distribution box has been deleted successfully.",
       });
       onOpenChange(false);
     },
@@ -136,12 +148,12 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to delete POP",
+        description: error.message || "Failed to delete distribution box",
       });
     },
   });
 
-  const onSubmit = (data: InsertPop) => {
+  const onSubmit = (data: InsertDistributionBox) => {
     if (isEditing) {
       updateMutation.mutate(data);
     } else {
@@ -150,7 +162,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
   };
 
   const handleDelete = () => {
-    if (confirm("Are you sure you want to delete this POP? This will also affect associated OLTs.")) {
+    if (confirm("Are you sure you want to delete this distribution box? This will affect all associated ONUs.")) {
       deleteMutation.mutate();
     }
   };
@@ -162,14 +174,21 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle data-testid="text-dialog-title">
-            {isEditing ? "Edit POP" : "Add New POP"}
+            {isEditing ? "Edit Distribution Box" : "Add New Distribution Box"}
           </DialogTitle>
           <DialogDescription>
             {isEditing
-              ? "Update the Point of Presence information"
-              : "Add a new physical location for your FTTH equipment"}
+              ? "Update the distribution box information"
+              : "Add a new optical distribution point (ODP) to your network"}
           </DialogDescription>
         </DialogHeader>
+
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            Each PON port can have up to 8 distribution boxes (slots 0-7). Each box supports up to 16 ONUs.
+          </AlertDescription>
+        </Alert>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -181,7 +200,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
                   <FormItem>
                     <FormLabel>Name *</FormLabel>
                     <FormControl>
-                      <Input placeholder="Main Office" {...field} data-testid="input-name" />
+                      <Input placeholder="ODP Main Street 01" {...field} data-testid="input-name" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -195,9 +214,83 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
                   <FormItem>
                     <FormLabel>Code *</FormLabel>
                     <FormControl>
-                      <Input placeholder="MAIN" {...field} data-testid="input-code" />
+                      <Input placeholder="ODP-MAIN-01" {...field} data-testid="input-code" />
                     </FormControl>
-                    <FormDescription>Unique identifier (e.g., MAIN, BRANCH1)</FormDescription>
+                    <FormDescription>Unique identifier</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="oltId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>OLT *</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    value={field.value?.toString()}
+                  >
+                    <FormControl>
+                      <SelectTrigger data-testid="select-olt">
+                        <SelectValue placeholder="Select OLT" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {olts.map((olt) => (
+                        <SelectItem key={olt.id} value={olt.id.toString()}>
+                          {olt.name} ({olt.vendor})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="ponPort"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>PON Port *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="0/1" {...field} data-testid="input-pon-port" />
+                    </FormControl>
+                    <FormDescription>Format: slot/port (e.g., 0/1)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="ponSlotIndex"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>PON Slot Index *</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(parseInt(value))}
+                      value={field.value?.toString()}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-slot-index">
+                          <SelectValue placeholder="Select slot (0-7)" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {[0, 1, 2, 3, 4, 5, 6, 7].map((slot) => (
+                          <SelectItem key={slot} value={slot.toString()}>
+                            Slot {slot}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>0-7 (8 boxes per PON port)</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -212,7 +305,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
                   <FormLabel>Address</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Full address of the location..."
+                      placeholder="Physical location of the distribution box..."
                       className="resize-none"
                       {...field}
                       data-testid="input-address"
@@ -239,7 +332,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
                         data-testid="input-latitude"
                       />
                     </FormControl>
-                    <FormDescription>GPS coordinate (decimal)</FormDescription>
+                    <FormDescription>GPS coordinate</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -260,37 +353,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
                         data-testid="input-longitude"
                       />
                     </FormControl>
-                    <FormDescription>GPS coordinate (decimal)</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="contactPerson"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Contact Person</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} data-testid="input-contact-person" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="contactPhone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Contact Phone</FormLabel>
-                    <FormControl>
-                      <Input placeholder="+62 812 3456 7890" {...field} data-testid="input-contact-phone" />
-                    </FormControl>
+                    <FormDescription>GPS coordinate</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -305,7 +368,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
                   <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Additional notes about this location..."
+                      placeholder="Additional notes about this distribution box..."
                       className="resize-none"
                       {...field}
                       data-testid="input-description"
@@ -324,7 +387,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
                   <div className="space-y-0.5">
                     <FormLabel className="text-base">Active Status</FormLabel>
                     <FormDescription>
-                      Mark as active if this location is currently operational
+                      Mark as active if this distribution box is currently operational
                     </FormDescription>
                   </div>
                   <FormControl>

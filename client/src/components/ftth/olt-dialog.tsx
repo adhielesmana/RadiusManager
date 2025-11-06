@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -51,24 +52,66 @@ export function OltDialog({ open, onOpenChange, olt, pops }: OltDialogProps) {
   const form = useForm<InsertOlt>({
     resolver: zodResolver(insertOltSchema),
     defaultValues: {
-      name: olt?.name ?? "",
-      vendor: olt?.vendor ?? "ZTE",
-      model: olt?.model ?? "",
-      popId: olt?.popId ?? (pops[0]?.id ?? 0),
-      ipAddress: olt?.ipAddress ?? "",
-      telnetPort: olt?.telnetPort ?? 23,
-      telnetUsername: olt?.telnetUsername ?? "",
-      telnetPassword: olt?.telnetPassword ?? "",
-      snmpCommunity: olt?.snmpCommunity ?? "",
-      snmpPort: olt?.snmpPort ?? 161,
-      totalPonSlots: olt?.totalPonSlots ?? 16,
-      portsPerSlot: olt?.portsPerSlot ?? 16,
-      description: olt?.description ?? "",
-      telnetEnabled: olt?.telnetEnabled ?? true,
-      snmpEnabled: olt?.snmpEnabled ?? true,
-      isActive: olt?.isActive ?? true,
+      name: "",
+      vendor: "ZTE",
+      model: "",
+      popId: pops[0]?.id ?? 0,
+      ipAddress: "",
+      telnetPort: 23,
+      telnetUsername: "",
+      telnetPassword: "",
+      snmpCommunity: "",
+      snmpPort: 161,
+      totalPonSlots: 16,
+      portsPerSlot: 16,
+      description: "",
+      telnetEnabled: true,
+      snmpEnabled: true,
+      isActive: true,
     },
   });
+
+  useEffect(() => {
+    if (open && olt) {
+      form.reset({
+        name: olt.name ?? "",
+        vendor: olt.vendor ?? "ZTE",
+        model: olt.model ?? "",
+        popId: olt.popId ?? (pops[0]?.id ?? 0),
+        ipAddress: olt.ipAddress ?? "",
+        telnetPort: olt.telnetPort ?? 23,
+        telnetUsername: olt.telnetUsername ?? "",
+        telnetPassword: olt.telnetPassword ?? "",
+        snmpCommunity: olt.snmpCommunity ?? "",
+        snmpPort: olt.snmpPort ?? 161,
+        totalPonSlots: olt.totalPonSlots ?? 16,
+        portsPerSlot: olt.portsPerSlot ?? 16,
+        description: olt.description ?? "",
+        telnetEnabled: olt.telnetEnabled ?? true,
+        snmpEnabled: olt.snmpEnabled ?? true,
+        isActive: olt.isActive ?? true,
+      });
+    } else if (open && !olt) {
+      form.reset({
+        name: "",
+        vendor: "ZTE",
+        model: "",
+        popId: pops[0]?.id ?? 0,
+        ipAddress: "",
+        telnetPort: 23,
+        telnetUsername: "",
+        telnetPassword: "",
+        snmpCommunity: "",
+        snmpPort: 161,
+        totalPonSlots: 16,
+        portsPerSlot: 16,
+        description: "",
+        telnetEnabled: true,
+        snmpEnabled: true,
+        isActive: true,
+      });
+    }
+  }, [open, olt?.id, form]);
 
   const createMutation = useMutation({
     mutationFn: (data: InsertOlt) => apiRequest('/api/olts', 'POST', data),
@@ -113,6 +156,7 @@ export function OltDialog({ open, onOpenChange, olt, pops }: OltDialogProps) {
     mutationFn: () => apiRequest(`/api/olts/${olt?.id}`, 'DELETE'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/olts'] });
+      form.reset();
       toast({
         title: "OLT Deleted",
         description: "The Optical Line Terminal has been deleted successfully.",

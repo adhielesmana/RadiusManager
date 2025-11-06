@@ -18,6 +18,7 @@ import Users from "@/pages/users";
 import Routers from "@/pages/routers";
 import PopsPage from "@/pages/ftth/pops";
 import OltsPage from "@/pages/ftth/olts";
+import DistributionBoxesPage from "@/pages/ftth/distribution-boxes";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { LogOut, User as UserIcon } from "lucide-react";
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/settings" component={Settings} />
       <Route path="/ftth/pops" component={PopsPage} />
       <Route path="/ftth/olts" component={OltsPage} />
+      <Route path="/ftth/distribution-boxes" component={DistributionBoxesPage} />
       <Route component={NotFound} />
     </Switch>
   );
