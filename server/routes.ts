@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema, insertUserSchema, insertNasSchema } from "@shared/schema";
+import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema, insertUserSchema, insertNasSchema, insertPopSchema, insertOltSchema, insertOnuSchema } from "@shared/schema";
 import { db } from "./db";
 import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -699,6 +699,197 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       await storage.deleteNas(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // FTTH POP Endpoints - Admin only
+  app.get("/api/pops", requireAdmin, async (_req, res) => {
+    try {
+      const popsList = await storage.getPops();
+      res.json(popsList);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/pops/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pop = await storage.getPop(id);
+      if (!pop) {
+        return res.status(404).json({ error: "POP not found" });
+      }
+      res.json(pop);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/pops", requireAdmin, async (req, res) => {
+    try {
+      const validatedData = insertPopSchema.parse(req.body);
+      const pop = await storage.createPop(validatedData);
+      res.status(201).json(pop);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/pops/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertPopSchema.partial().parse(req.body);
+      const pop = await storage.updatePop(id, validatedData);
+      if (!pop) {
+        return res.status(404).json({ error: "POP not found" });
+      }
+      res.json(pop);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/pops/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deletePop(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // FTTH OLT Endpoints - Admin only
+  app.get("/api/olts", requireAdmin, async (_req, res) => {
+    try {
+      const oltsList = await storage.getOlts();
+      res.json(oltsList);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/olts/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const olt = await storage.getOlt(id);
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found" });
+      }
+      res.json(olt);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/pops/:popId/olts", requireAdmin, async (req, res) => {
+    try {
+      const popId = parseInt(req.params.popId);
+      const olts = await storage.getPopOlts(popId);
+      res.json(olts);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/olts", requireAdmin, async (req, res) => {
+    try {
+      const validatedData = insertOltSchema.parse(req.body);
+      const olt = await storage.createOlt(validatedData);
+      res.status(201).json(olt);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/olts/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertOltSchema.partial().parse(req.body);
+      const olt = await storage.updateOlt(id, validatedData);
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found" });
+      }
+      res.json(olt);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/olts/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteOlt(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // FTTH ONU Endpoints - Admin only
+  app.get("/api/onus", requireAdmin, async (_req, res) => {
+    try {
+      const onusList = await storage.getOnus();
+      res.json(onusList);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/onus/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const onu = await storage.getOnu(id);
+      if (!onu) {
+        return res.status(404).json({ error: "ONU not found" });
+      }
+      res.json(onu);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/olts/:oltId/onus", requireAdmin, async (req, res) => {
+    try {
+      const oltId = parseInt(req.params.oltId);
+      const onus = await storage.getOltOnus(oltId);
+      res.json(onus);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/onus", requireAdmin, async (req, res) => {
+    try {
+      const validatedData = insertOnuSchema.parse(req.body);
+      const onu = await storage.createOnu(validatedData);
+      res.status(201).json(onu);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/onus/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertOnuSchema.partial().parse(req.body);
+      const onu = await storage.updateOnu(id, validatedData);
+      if (!onu) {
+        return res.status(404).json({ error: "ONU not found" });
+      }
+      res.json(onu);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/onus/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteOnu(id);
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });

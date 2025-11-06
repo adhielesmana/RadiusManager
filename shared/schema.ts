@@ -208,6 +208,67 @@ export const nas = pgTable("nas", {
   description: varchar("description", { length: 200 }).default('RADIUS Client'), // Description
 });
 
+// FTTH Management Tables
+// pops - Point of Presence (OLT locations)
+export const pops = pgTable("pops", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  code: varchar("code", { length: 20 }).notNull().unique(), // Short code for identification
+  address: text("address"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  contactPerson: varchar("contact_person", { length: 100 }),
+  contactPhone: varchar("contact_phone", { length: 20 }),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// olts - Optical Line Terminals (OLT devices)
+export const olts = pgTable("olts", {
+  id: serial("id").primaryKey(),
+  popId: integer("pop_id").notNull().references(() => pops.id),
+  name: varchar("name", { length: 100 }).notNull(),
+  ipAddress: varchar("ip_address", { length: 45 }).notNull().unique(), // IPv4/IPv6
+  vendor: varchar("vendor", { length: 50 }).notNull(), // zte, huawei, fiberhome, bdcom, vsol, hioso, etc.
+  model: varchar("model", { length: 100 }),
+  oltType: varchar("olt_type", { length: 20 }).notNull(), // gpon, epon
+  managementType: varchar("management_type", { length: 20 }).notNull().default('telnet'), // telnet, ssh, snmp
+  port: integer("port").default(23), // 23 for telnet, 22 for ssh
+  username: varchar("username", { length: 100 }),
+  password: varchar("password", { length: 255 }), // Encrypted
+  enablePassword: varchar("enable_password", { length: 255 }), // For privileged mode (ZTE, Huawei)
+  snmpCommunity: varchar("snmp_community", { length: 50 }), // For SNMP access
+  status: varchar("status", { length: 20 }).notNull().default('active'), // active, inactive, maintenance
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// onus - Optical Network Units (Customer ONUs/ONTs)
+export const onus = pgTable("onus", {
+  id: serial("id").primaryKey(),
+  oltId: integer("olt_id").notNull().references(() => olts.id),
+  subscriptionId: integer("subscription_id").references(() => subscriptions.id), // Link to customer subscription
+  ponSerial: varchar("pon_serial", { length: 50 }).notNull().unique(), // PON Serial Number (GPON) or MAC (EPON)
+  macAddress: varchar("mac_address", { length: 17 }),
+  ponPort: varchar("pon_port", { length: 20 }).notNull(), // e.g., "0/1" (slot/port) or "gpon-olt_1/1/1"
+  onuId: integer("onu_id"), // ONU ID on the PON port (e.g., 1-128)
+  onuType: varchar("onu_type", { length: 50 }), // HGU, SFU, etc.
+  status: varchar("status", { length: 20 }).notNull().default('offline'), // online, offline, silent
+  signalRx: decimal("signal_rx", { precision: 5, scale: 2 }), // Received signal strength in dBm
+  signalTx: decimal("signal_tx", { precision: 5, scale: 2 }), // Transmitted signal strength in dBm
+  distance: integer("distance"), // Distance from OLT in meters
+  vlanId: integer("vlan_id"), // Service VLAN
+  bandwidthProfile: varchar("bandwidth_profile", { length: 100 }),
+  description: text("description"), // Customer name or identifier
+  lastOnline: timestamp("last_online"),
+  registrationDate: timestamp("registration_date").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const customersRelations = relations(customers, ({ many }) => ({
   subscriptions: many(subscriptions),
@@ -289,6 +350,30 @@ export const permissionsRelations = relations(permissions, ({ one }) => ({
   }),
 }));
 
+// FTTH Relations
+export const popsRelations = relations(pops, ({ many }) => ({
+  olts: many(olts),
+}));
+
+export const oltsRelations = relations(olts, ({ one, many }) => ({
+  pop: one(pops, {
+    fields: [olts.popId],
+    references: [pops.id],
+  }),
+  onus: many(onus),
+}));
+
+export const onusRelations = relations(onus, ({ one }) => ({
+  olt: one(olts, {
+    fields: [onus.oltId],
+    references: [olts.id],
+  }),
+  subscription: one(subscriptions, {
+    fields: [onus.subscriptionId],
+    references: [subscriptions.id],
+  }),
+}));
+
 // Insert Schemas
 export const insertCustomerSchema = createInsertSchema(customers, {
   email: z.string().email().optional().or(z.literal('')),
@@ -362,6 +447,39 @@ export const insertNasSchema = createInsertSchema(nas).omit({
   ports: z.number().int().positive().optional().default(1812),
 });
 
+// FTTH Insert Schemas
+export const insertPopSchema = createInsertSchema(pops, {
+  latitude: z.string().or(z.number()).optional().or(z.literal('')),
+  longitude: z.string().or(z.number()).optional().or(z.literal('')),
+}).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+});
+
+export const insertOltSchema = createInsertSchema(olts, {
+  vendor: z.enum(['zte', 'huawei', 'fiberhome', 'bdcom', 'vsol', 'hioso', 'other']),
+  oltType: z.enum(['gpon', 'epon']),
+  managementType: z.enum(['telnet', 'ssh', 'snmp']),
+  ipAddress: z.string().ip(),
+}).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+});
+
+export const insertOnuSchema = createInsertSchema(onus, {
+  macAddress: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/).optional().or(z.literal('')),
+  signalRx: z.string().or(z.number()).optional().or(z.literal('')),
+  signalTx: z.string().or(z.number()).optional().or(z.literal('')),
+  lastOnline: z.coerce.date().optional(),
+  registrationDate: z.coerce.date().optional(),
+}).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+});
+
 // Types
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -404,3 +522,12 @@ export type Radusergroup = typeof radusergroup.$inferSelect;
 
 export type Nas = typeof nas.$inferSelect;
 export type InsertNas = z.infer<typeof insertNasSchema>;
+
+export type Pop = typeof pops.$inferSelect;
+export type InsertPop = z.infer<typeof insertPopSchema>;
+
+export type Olt = typeof olts.$inferSelect;
+export type InsertOlt = z.infer<typeof insertOltSchema>;
+
+export type Onu = typeof onus.$inferSelect;
+export type InsertOnu = z.infer<typeof insertOnuSchema>;

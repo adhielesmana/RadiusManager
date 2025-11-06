@@ -19,6 +19,9 @@ import {
   radusergroup,
   radgroupreply,
   nas,
+  pops,
+  olts,
+  onus,
   type Customer,
   type InsertCustomer,
   type Subscription,
@@ -42,6 +45,12 @@ import {
   type InsertPermission,
   type Nas,
   type InsertNas,
+  type Pop,
+  type InsertPop,
+  type Olt,
+  type InsertOlt,
+  type Onu,
+  type InsertOnu,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -123,6 +132,30 @@ export interface IStorage {
   createNas(nas: InsertNas): Promise<Nas>;
   updateNas(id: number, nas: Partial<InsertNas>): Promise<Nas | undefined>;
   deleteNas(id: number): Promise<void>;
+  
+  // FTTH POP operations
+  getPops(): Promise<Pop[]>;
+  getPop(id: number): Promise<Pop | undefined>;
+  createPop(pop: InsertPop): Promise<Pop>;
+  updatePop(id: number, pop: Partial<InsertPop>): Promise<Pop | undefined>;
+  deletePop(id: number): Promise<void>;
+  
+  // FTTH OLT operations
+  getOlts(): Promise<Olt[]>;
+  getOlt(id: number): Promise<Olt | undefined>;
+  getPopOlts(popId: number): Promise<Olt[]>;
+  createOlt(olt: InsertOlt): Promise<Olt>;
+  updateOlt(id: number, olt: Partial<InsertOlt>): Promise<Olt | undefined>;
+  deleteOlt(id: number): Promise<void>;
+  
+  // FTTH ONU operations
+  getOnus(): Promise<Onu[]>;
+  getOnu(id: number): Promise<Onu | undefined>;
+  getOltOnus(oltId: number): Promise<Onu[]>;
+  getSubscriptionOnu(subscriptionId: number): Promise<Onu | undefined>;
+  createOnu(onu: InsertOnu): Promise<Onu>;
+  updateOnu(id: number, onu: Partial<InsertOnu>): Promise<Onu | undefined>;
+  deleteOnu(id: number): Promise<void>;
   
   // RADIUS operations
   syncSubscriptionToRadius(subscription: Subscription, customer: Customer): Promise<void>;
@@ -928,6 +961,129 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNas(id: number): Promise<void> {
     await db.delete(nas).where(eq(nas.id, id));
+  }
+  
+  // FTTH POP operations
+  async getPops(): Promise<Pop[]> {
+    return await db.select().from(pops).orderBy(pops.name);
+  }
+
+  async getPop(id: number): Promise<Pop | undefined> {
+    const [pop] = await db.select().from(pops).where(eq(pops.id, id));
+    return pop || undefined;
+  }
+
+  async createPop(insertPop: InsertPop): Promise<Pop> {
+    // Convert latitude/longitude to string for decimal columns
+    const popData = {
+      ...insertPop,
+      latitude: insertPop.latitude ? String(insertPop.latitude) : insertPop.latitude,
+      longitude: insertPop.longitude ? String(insertPop.longitude) : insertPop.longitude,
+    };
+    const [pop] = await db.insert(pops).values(popData as any).returning();
+    return pop;
+  }
+
+  async updatePop(id: number, updatePop: Partial<InsertPop>): Promise<Pop | undefined> {
+    // Convert latitude/longitude to string for decimal columns
+    const popData = {
+      ...updatePop,
+      latitude: updatePop.latitude ? String(updatePop.latitude) : updatePop.latitude,
+      longitude: updatePop.longitude ? String(updatePop.longitude) : updatePop.longitude,
+      updatedAt: sql`CURRENT_TIMESTAMP`,
+    };
+    const [pop] = await db
+      .update(pops)
+      .set(popData as any)
+      .where(eq(pops.id, id))
+      .returning();
+    return pop || undefined;
+  }
+
+  async deletePop(id: number): Promise<void> {
+    await db.delete(pops).where(eq(pops.id, id));
+  }
+  
+  // FTTH OLT operations
+  async getOlts(): Promise<Olt[]> {
+    return await db.select().from(olts).orderBy(olts.name);
+  }
+
+  async getOlt(id: number): Promise<Olt | undefined> {
+    const [olt] = await db.select().from(olts).where(eq(olts.id, id));
+    return olt || undefined;
+  }
+
+  async getPopOlts(popId: number): Promise<Olt[]> {
+    return await db.select().from(olts).where(eq(olts.popId, popId)).orderBy(olts.name);
+  }
+
+  async createOlt(insertOlt: InsertOlt): Promise<Olt> {
+    const [olt] = await db.insert(olts).values(insertOlt).returning();
+    return olt;
+  }
+
+  async updateOlt(id: number, updateOlt: Partial<InsertOlt>): Promise<Olt | undefined> {
+    const [olt] = await db
+      .update(olts)
+      .set({ ...updateOlt, updatedAt: sql`CURRENT_TIMESTAMP` })
+      .where(eq(olts.id, id))
+      .returning();
+    return olt || undefined;
+  }
+
+  async deleteOlt(id: number): Promise<void> {
+    await db.delete(olts).where(eq(olts.id, id));
+  }
+  
+  // FTTH ONU operations
+  async getOnus(): Promise<Onu[]> {
+    return await db.select().from(onus).orderBy(desc(onus.createdAt));
+  }
+
+  async getOnu(id: number): Promise<Onu | undefined> {
+    const [onu] = await db.select().from(onus).where(eq(onus.id, id));
+    return onu || undefined;
+  }
+
+  async getOltOnus(oltId: number): Promise<Onu[]> {
+    return await db.select().from(onus).where(eq(onus.oltId, oltId)).orderBy(onus.ponPort, onus.onuId);
+  }
+
+  async getSubscriptionOnu(subscriptionId: number): Promise<Onu | undefined> {
+    const [onu] = await db.select().from(onus).where(eq(onus.subscriptionId, subscriptionId));
+    return onu || undefined;
+  }
+
+  async createOnu(insertOnu: InsertOnu): Promise<Onu> {
+    // Convert signalRx/signalTx to string for decimal columns
+    const onuData = {
+      ...insertOnu,
+      signalRx: insertOnu.signalRx ? String(insertOnu.signalRx) : insertOnu.signalRx,
+      signalTx: insertOnu.signalTx ? String(insertOnu.signalTx) : insertOnu.signalTx,
+    };
+    const [onu] = await db.insert(onus).values(onuData as any).returning();
+    return onu;
+  }
+
+  async updateOnu(id: number, updateOnu: Partial<InsertOnu>): Promise<Onu | undefined> {
+    // Convert signalRx/signalTx to string for decimal columns
+    const onuData = {
+      ...updateOnu,
+      signalRx: updateOnu.signalRx ? String(updateOnu.signalRx) : updateOnu.signalRx,
+      signalTx: updateOnu.signalTx ? String(updateOnu.signalTx) : updateOnu.signalTx,
+      updatedAt: sql`CURRENT_TIMESTAMP`,
+    };
+    const [onu] = await db
+      .update(onus)
+      .set(onuData as any)
+      .where(eq(onus.id, id))
+      .returning();
+    return onu || undefined;
+  }
+
+  async deleteOnu(id: number): Promise<void> {
+    await db.delete(onus).where(eq(onus.id, id));
   }
 }
 
