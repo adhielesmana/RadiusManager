@@ -10,6 +10,7 @@ import {
   tickets,
   activityLogs,
   settings,
+  companyGroups,
   radcheck,
   radreply,
   radusergroup,
@@ -29,6 +30,8 @@ import {
   type InsertActivityLog,
   type Settings,
   type InsertSettings,
+  type CompanyGroup,
+  type InsertCompanyGroup,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -44,7 +47,15 @@ export interface IStorage {
   getCustomerSubscriptions(customerId: number): Promise<Subscription[]>;
   createSubscription(subscription: InsertSubscription): Promise<Subscription>;
   updateSubscription(id: number, subscription: Partial<InsertSubscription>): Promise<Subscription | undefined>;
+  deleteSubscription(id: number): Promise<void>;
   getExpiringSubscriptions(): Promise<Subscription[]>;
+  generateSubscriptionId(companyGroupId: number, activationDate: Date): Promise<string>;
+  
+  // Company Group operations
+  getCompanyGroups(): Promise<CompanyGroup[]>;
+  getCompanyGroup(id: number): Promise<CompanyGroup | undefined>;
+  createCompanyGroup(companyGroup: InsertCompanyGroup): Promise<CompanyGroup>;
+  updateCompanyGroup(id: number, companyGroup: Partial<InsertCompanyGroup>): Promise<CompanyGroup | undefined>;
   
   // Profile operations
   getProfiles(): Promise<Profile[]>;
@@ -165,9 +176,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSubscription(insertSubscription: InsertSubscription): Promise<Subscription> {
+    // Generate subscription ID
+    const activationDate = insertSubscription.activationDate || new Date();
+    const companyGroupId = insertSubscription.companyGroupId || 1;
+    const subscriptionId = await this.generateSubscriptionId(companyGroupId, activationDate);
+    
     const [subscription] = await db
       .insert(subscriptions)
-      .values(insertSubscription)
+      .values({ ...insertSubscription, subscriptionId })
       .returning();
     
     // Get customer for RADIUS sync
@@ -180,7 +196,7 @@ export class DatabaseStorage implements IStorage {
     await this.logActivity({
       customerId: subscription.customerId,
       action: "subscription_created",
-      description: `Subscription created at ${subscription.installationAddress}`,
+      description: `Subscription ${subscriptionId} created at ${subscription.installationAddress}`,
     });
     
     return subscription;
@@ -211,6 +227,20 @@ export class DatabaseStorage implements IStorage {
     return subscription || undefined;
   }
 
+  async deleteSubscription(id: number): Promise<void> {
+    const subscription = await this.getSubscription(id);
+    if (subscription) {
+      await db.delete(subscriptions).where(eq(subscriptions.id, id));
+      
+      // Log activity
+      await this.logActivity({
+        customerId: subscription.customerId,
+        action: "subscription_deleted",
+        description: `Subscription ${subscription.subscriptionId} deleted`,
+      });
+    }
+  }
+
   async getExpiringSubscriptions(): Promise<Subscription[]> {
     const sevenDaysFromNow = new Date();
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
@@ -226,6 +256,67 @@ export class DatabaseStorage implements IStorage {
       )
       .orderBy(subscriptions.expiryDate)
       .limit(5);
+  }
+
+  async generateSubscriptionId(companyGroupId: number, activationDate: Date): Promise<string> {
+    // Get company group code
+    const companyGroup = await this.getCompanyGroup(companyGroupId);
+    if (!companyGroup) {
+      throw new Error(`Company group ${companyGroupId} not found`);
+    }
+
+    // Format: YYMMDDXNNNN
+    const year = activationDate.getFullYear().toString().slice(-2);
+    const month = (activationDate.getMonth() + 1).toString().padStart(2, '0');
+    const day = activationDate.getDate().toString().padStart(2, '0');
+    const datePrefix = `${year}${month}${day}`;
+    const companyCode = companyGroup.code;
+
+    // Get count of subscriptions on this date with this company group
+    const startOfDay = new Date(activationDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(activationDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingCount = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.companyGroupId, companyGroupId),
+          gte(subscriptions.activationDate, startOfDay),
+          lte(subscriptions.activationDate, endOfDay)
+        )
+      );
+
+    const sequence = (Number(existingCount[0]?.count || 0) + 1).toString().padStart(4, '0');
+    return `${datePrefix}${companyCode}${sequence}`;
+  }
+
+  async getCompanyGroups(): Promise<CompanyGroup[]> {
+    return await db.select().from(companyGroups).orderBy(companyGroups.name);
+  }
+
+  async getCompanyGroup(id: number): Promise<CompanyGroup | undefined> {
+    const [group] = await db.select().from(companyGroups).where(eq(companyGroups.id, id));
+    return group || undefined;
+  }
+
+  async createCompanyGroup(insertGroup: InsertCompanyGroup): Promise<CompanyGroup> {
+    const [group] = await db
+      .insert(companyGroups)
+      .values(insertGroup)
+      .returning();
+    return group;
+  }
+
+  async updateCompanyGroup(id: number, data: Partial<InsertCompanyGroup>): Promise<CompanyGroup | undefined> {
+    const [group] = await db
+      .update(companyGroups)
+      .set(data)
+      .where(eq(companyGroups.id, id))
+      .returning();
+    return group || undefined;
   }
 
   async getProfiles(): Promise<Profile[]> {
