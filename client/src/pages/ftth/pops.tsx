@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -11,12 +11,15 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { PopDialog } from "@/components/ftth/pop-dialog";
+import { PopDetailDialog } from "@/components/ftth/pop-detail-dialog";
 import { useState } from "react";
 import type { Pop } from "@shared/schema";
 
 export default function PopsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [editingPop, setEditingPop] = useState<Pop | null>(null);
+  const [viewingPop, setViewingPop] = useState<Pop | null>(null);
 
   const { data: pops, isLoading } = useQuery<Pop[]>({
     queryKey: ['/api/pops'],
@@ -35,6 +38,16 @@ export default function PopsPage() {
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setEditingPop(null);
+  };
+
+  const handleViewDetails = (pop: Pop) => {
+    setViewingPop(pop);
+    setDetailDialogOpen(true);
+  };
+
+  const handleCloseDetailDialog = () => {
+    setDetailDialogOpen(false);
+    setViewingPop(null);
   };
 
   if (isLoading) {
@@ -115,14 +128,26 @@ export default function PopsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(pop)}
-                      data-testid={`button-edit-pop-${pop.id}`}
-                    >
-                      Edit
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleViewDetails(pop)}
+                        data-testid={`button-view-pop-${pop.id}`}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Details
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(pop)}
+                        data-testid={`button-edit-pop-${pop.id}`}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -135,6 +160,12 @@ export default function PopsPage() {
         open={dialogOpen}
         onOpenChange={handleCloseDialog}
         pop={editingPop}
+      />
+      
+      <PopDetailDialog
+        open={detailDialogOpen}
+        onOpenChange={handleCloseDetailDialog}
+        pop={viewingPop}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -11,12 +11,15 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DistributionBoxDialog } from "@/components/ftth/distribution-box-dialog";
+import { DistributionBoxDetailDialog } from "@/components/ftth/distribution-box-detail-dialog";
 import { useState } from "react";
 import type { DistributionBox, Olt, Pop } from "@shared/schema";
 
 export default function DistributionBoxesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [editingBox, setEditingBox] = useState<DistributionBox | null>(null);
+  const [viewingBox, setViewingBox] = useState<DistributionBox | null>(null);
 
   const { data: distributionBoxes, isLoading } = useQuery<DistributionBox[]>({
     queryKey: ['/api/distribution-boxes'],
@@ -45,12 +48,24 @@ export default function DistributionBoxesPage() {
     setEditingBox(null);
   };
 
+  const handleViewDetails = (box: DistributionBox) => {
+    setViewingBox(box);
+    setDetailDialogOpen(true);
+  };
+
+  const handleCloseDetailDialog = () => {
+    setDetailDialogOpen(false);
+    setViewingBox(null);
+  };
+
   const getOltInfo = (oltId: number) => {
     const olt = olts?.find(o => o.id === oltId);
     if (!olt) return { name: 'Unknown', popName: '' };
     const pop = pops?.find(p => p.id === olt.popId);
     return { name: olt.name, popName: pop?.name || '' };
   };
+
+  const viewingOltName = viewingBox ? getOltInfo(viewingBox.oltId).name : undefined;
 
   if (isLoading) {
     return (
@@ -136,24 +151,36 @@ export default function DistributionBoxesPage() {
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Badge variant="outline" className="text-xs">
-                          {box.onuCount || 0}/16 ONUs
+                          0/{box.maxOnus} ONUs
                         </Badge>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={box.isActive ? "default" : "secondary"}>
-                        {box.isActive ? "Active" : "Inactive"}
+                      <Badge variant={box.status === 'active' ? "default" : "secondary"}>
+                        {box.status.charAt(0).toUpperCase() + box.status.slice(1)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(box)}
-                        data-testid={`button-edit-distribution-box-${box.id}`}
-                      >
-                        Edit
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewDetails(box)}
+                          data-testid={`button-view-distribution-box-${box.id}`}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Details
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(box)}
+                          data-testid={`button-edit-distribution-box-${box.id}`}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -168,6 +195,13 @@ export default function DistributionBoxesPage() {
         onOpenChange={handleCloseDialog}
         distributionBox={editingBox}
         olts={olts || []}
+      />
+      
+      <DistributionBoxDetailDialog
+        open={detailDialogOpen}
+        onOpenChange={handleCloseDetailDialog}
+        box={viewingBox}
+        oltName={viewingOltName}
       />
     </div>
   );

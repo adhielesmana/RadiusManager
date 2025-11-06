@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { OnuDialog } from "@/components/ftth/onu-dialog";
+import { OnuDetailDialog } from "@/components/ftth/onu-detail-dialog";
 import { useState } from "react";
 import type { Onu, DistributionBox, Olt } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
@@ -28,7 +29,9 @@ import {
 
 export default function OnusPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [editingOnu, setEditingOnu] = useState<Onu | null>(null);
+  const [viewingOnu, setViewingOnu] = useState<Onu | null>(null);
   const [deletingOnu, setDeletingOnu] = useState<Onu | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -88,6 +91,16 @@ export default function OnusPage() {
     setEditingOnu(null);
   };
 
+  const handleViewDetails = (onu: Onu) => {
+    setViewingOnu(onu);
+    setDetailDialogOpen(true);
+  };
+
+  const handleCloseDetailDialog = () => {
+    setDetailDialogOpen(false);
+    setViewingOnu(null);
+  };
+
   const getBoxInfo = (boxId: number | null) => {
     if (!boxId) return { code: 'N/A', name: '', oltName: '' };
     const box = distributionBoxes?.find(b => b.id === boxId);
@@ -109,6 +122,9 @@ export default function OnusPage() {
       default: return 'outline';
     }
   };
+
+  const viewingOltName = viewingOnu ? getOltName(viewingOnu.oltId) : undefined;
+  const viewingBoxName = viewingOnu ? getBoxInfo(viewingOnu.distributionBoxId).code : undefined;
 
   if (isLoading) {
     return (
@@ -202,6 +218,14 @@ export default function OnusPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => handleViewDetails(onu)}
+                          data-testid={`button-view-onu-${onu.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleEdit(onu)}
                           data-testid={`button-edit-onu-${onu.id}`}
                         >
@@ -229,6 +253,14 @@ export default function OnusPage() {
         open={dialogOpen}
         onOpenChange={handleCloseDialog}
         onu={editingOnu}
+      />
+
+      <OnuDetailDialog
+        open={detailDialogOpen}
+        onOpenChange={handleCloseDetailDialog}
+        onu={viewingOnu}
+        oltName={viewingOltName}
+        boxName={viewingBoxName}
       />
 
       <AlertDialog open={!!deletingOnu} onOpenChange={() => setDeletingOnu(null)}>

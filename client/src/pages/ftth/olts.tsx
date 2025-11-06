@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -11,12 +11,15 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { OltDialog } from "@/components/ftth/olt-dialog";
+import { OltDetailDialog } from "@/components/ftth/olt-detail-dialog";
 import { useState } from "react";
 import type { Olt, Pop } from "@shared/schema";
 
 export default function OltsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [editingOlt, setEditingOlt] = useState<Olt | null>(null);
+  const [viewingOlt, setViewingOlt] = useState<Olt | null>(null);
 
   const { data: olts, isLoading } = useQuery<Olt[]>({
     queryKey: ['/api/olts'],
@@ -41,9 +44,21 @@ export default function OltsPage() {
     setEditingOlt(null);
   };
 
+  const handleViewDetails = (olt: Olt) => {
+    setViewingOlt(olt);
+    setDetailDialogOpen(true);
+  };
+
+  const handleCloseDetailDialog = () => {
+    setDetailDialogOpen(false);
+    setViewingOlt(null);
+  };
+
   const getPopName = (popId: number) => {
     return pops?.find(p => p.id === popId)?.name || 'Unknown';
   };
+
+  const viewingPopName = viewingOlt ? getPopName(viewingOlt.popId) : undefined;
 
   const getVendorBadgeColor = (vendor: string) => {
     switch (vendor) {
@@ -142,14 +157,26 @@ export default function OltsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(olt)}
-                      data-testid={`button-edit-olt-${olt.id}`}
-                    >
-                      Edit
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleViewDetails(olt)}
+                        data-testid={`button-view-olt-${olt.id}`}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Details
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(olt)}
+                        data-testid={`button-edit-olt-${olt.id}`}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -163,6 +190,13 @@ export default function OltsPage() {
         onOpenChange={handleCloseDialog}
         olt={editingOlt}
         pops={pops || []}
+      />
+      
+      <OltDetailDialog
+        open={detailDialogOpen}
+        onOpenChange={handleCloseDetailDialog}
+        olt={viewingOlt}
+        popName={viewingPopName}
       />
     </div>
   );
