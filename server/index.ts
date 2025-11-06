@@ -1,14 +1,37 @@
 import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// Extend session data interface
+declare module 'express-session' {
+  interface SessionData {
+    userId?: number;
+    username?: string;
+    role?: string;
+  }
+}
 
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
   }
 }
+
+// Session middleware
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'isp-manager-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  }
+}));
+
 app.use(express.json({
   limit: '10mb', // Increased limit to support base64 encoded images
   verify: (req, _res, buf) => {

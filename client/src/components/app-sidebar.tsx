@@ -1,7 +1,8 @@
-import { Home, Users, Gauge, FileText, Ticket, Settings, Network } from "lucide-react";
+import { Home, Users, Gauge, FileText, Ticket, Settings, Network, Shield } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Settings as SettingsType } from "@shared/schema";
+import { useAuth } from "@/lib/auth-context";
 import {
   Sidebar,
   SidebarContent,
@@ -19,44 +20,63 @@ const menuItems = [
     title: "Dashboard",
     url: "/",
     icon: Home,
+    roles: ["superadmin", "admin", "user"],
   },
   {
     title: "Customers",
     url: "/customers",
     icon: Users,
+    roles: ["superadmin", "admin", "user"],
   },
   {
     title: "Subscriptions",
     url: "/subscriptions",
     icon: Network,
+    roles: ["superadmin", "admin", "user"],
   },
   {
     title: "Profiles",
     url: "/profiles",
     icon: Gauge,
+    roles: ["superadmin", "admin", "user"],
   },
   {
     title: "Invoices",
     url: "/invoices",
     icon: FileText,
+    roles: ["superadmin", "admin", "user"],
   },
   {
     title: "Tickets",
     url: "/tickets",
     icon: Ticket,
+    roles: ["superadmin", "admin", "user"],
+  },
+  {
+    title: "Users",
+    url: "/users",
+    icon: Shield,
+    roles: ["superadmin"], // Only superadmin can access
   },
   {
     title: "Settings",
     url: "/settings",
     icon: Settings,
+    roles: ["superadmin", "admin"],
   },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { user } = useAuth();
   const { data: settings } = useQuery<SettingsType>({
     queryKey: ['/api/settings'],
   });
+
+  // Filter menu items based on user role
+  const visibleMenuItems = menuItems.filter((item) =>
+    user ? item.roles.includes(user.role) : false
+  );
 
   return (
     <Sidebar>
@@ -85,7 +105,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {visibleMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={location === item.url} data-testid={`link-${item.title.toLowerCase()}`}>
                     <Link href={item.url}>

@@ -1,6 +1,7 @@
 // Storage layer implementation following the javascript_database blueprint
 import { db } from "./db";
 import { eq, desc, gte, lte, sql, and, or } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import {
   customers,
   subscriptions,
@@ -11,6 +12,8 @@ import {
   activityLogs,
   settings,
   companyGroups,
+  users,
+  permissions,
   radcheck,
   radreply,
   radusergroup,
@@ -32,6 +35,10 @@ import {
   type InsertSettings,
   type CompanyGroup,
   type InsertCompanyGroup,
+  type User,
+  type InsertUser,
+  type Permission,
+  type InsertPermission,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -94,6 +101,18 @@ export interface IStorage {
   // Settings operations
   getSettings(): Promise<Settings>;
   updateSettings(settings: Partial<InsertSettings>): Promise<Settings>;
+  
+  // User operations
+  getUsers(): Promise<User[]>;
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, user: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: number): Promise<void>;
+  
+  // Permission operations
+  getUserPermissions(userId: number): Promise<Permission[]>;
+  setUserPermissions(userId: number, menuIds: string[]): Promise<void>;
   
   // RADIUS operations
   syncSubscriptionToRadius(subscription: Subscription, customer: Customer): Promise<void>;
@@ -711,6 +730,78 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return updated;
+  }
+
+  async getUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    // Hash password before storing
+    const hashedPassword = await bcrypt.hash(insertUser.password, 10);
+    
+    const [user] = await db
+      .insert(users)
+      .values({
+        ...insertUser,
+        password: hashedPassword,
+      })
+      .returning();
+    
+    return user;
+  }
+
+  async updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined> {
+    // Hash password if provided
+    const updateData = { ...data };
+    if (data.password) {
+      updateData.password = await bcrypt.hash(data.password, 10);
+    }
+    
+    const [user] = await db
+      .update(users)
+      .set({ ...updateData, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    
+    return user || undefined;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    // Delete user permissions first
+    await db.delete(permissions).where(eq(permissions.userId, id));
+    // Delete user
+    await db.delete(users).where(eq(users.id, id));
+  }
+
+  async getUserPermissions(userId: number): Promise<Permission[]> {
+    return await db.select().from(permissions).where(eq(permissions.userId, userId));
+  }
+
+  async setUserPermissions(userId: number, menuIds: string[]): Promise<void> {
+    // Delete existing permissions
+    await db.delete(permissions).where(eq(permissions.userId, userId));
+    
+    // Insert new permissions
+    if (menuIds.length > 0) {
+      const permissionsToInsert = menuIds.map(menuId => ({
+        userId,
+        menuId,
+        canAccess: true,
+      }));
+      
+      await db.insert(permissions).values(permissionsToInsert);
+    }
   }
 
   async syncProfileToRadiusGroup(profile: Profile): Promise<void> {
