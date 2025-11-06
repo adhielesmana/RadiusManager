@@ -307,7 +307,7 @@ export const insertInvoiceSchema = createInsertSchema(invoices, {
   paidDate: z.coerce.date().optional(),
   billingPeriodStart: z.coerce.date().optional(),
   billingPeriodEnd: z.coerce.date().optional(),
-}).omit({ id: true, createdAt: true });
+}).omit({ id: true, createdAt: true, invoiceNumber: true }); // invoiceNumber auto-generated
 
 export const insertTicketSchema = createInsertSchema(tickets).omit({ 
   id: true, 

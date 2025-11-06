@@ -128,6 +128,17 @@ npm run db:push
 - **Ticket Priority**: Urgent (red), High (orange), Medium (yellow), Low (gray)
 
 ## Recent Changes
+- 2025-11-06: **INVOICE NUMBER FORMAT UPDATE** - New atomic generation with date-based format
+  - ✅ Format: INVYYMMDDNNNNN (e.g., INV25110600001 for Nov 6, 2025, sequence #1)
+  - ✅ Atomic SQL generation using CTE to prevent race conditions
+  - ✅ Daily sequence reset (00001-99999)
+  - ✅ Auto-generated on backend, not user-editable
+  - ✅ E2E Tested: Invoice creation and sequence increment verified
+- 2025-11-06: **LOGIN & SIDEBAR LOGO DISPLAY** - Dynamic branding
+  - ✅ Login page displays company logo when set, falls back to Gauge icon
+  - ✅ "ISP Manager" text hidden when company logo exists
+  - ✅ Sidebar displays logo with proper sizing (h-10, max-w-180px)
+  - ✅ Optimized logo dimensions for professional appearance
 - 2025-11-06: **AUTHENTICATION SYSTEM COMPLETE** - Full user management with role-based access control
   - ✅ Database: Created users table with bcrypt password hashing
   - ✅ Hardcoded Superadmin: adhielesmana/admin123 (cannot be modified or deleted)

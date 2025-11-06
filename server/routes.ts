@@ -507,14 +507,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/invoices", async (req, res) => {
     try {
-      // Generate invoice number
-      const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substring(7).toUpperCase()}`;
+      const validatedData = insertInvoiceSchema.parse(req.body);
       
-      const validatedData = insertInvoiceSchema.parse({
-        ...req.body,
-        invoiceNumber,
-      });
-      
+      // Generate invoice number atomically using INVYYMMDDNNNNN format
       const invoice = await storage.createInvoice(validatedData);
       res.status(201).json(invoice);
     } catch (error: any) {

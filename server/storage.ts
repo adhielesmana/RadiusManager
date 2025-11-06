@@ -413,10 +413,55 @@ export class DatabaseStorage implements IStorage {
       total: typeof insertInvoice.total === 'number' ? insertInvoice.total.toString() : insertInvoice.total,
     };
 
-    const [invoice] = await db
-      .insert(invoices)
-      .values(invoiceData)
-      .returning();
+    // Generate invoice number atomically using INVYYMMDDNNNNN format
+    // This uses a CTE to atomically find the next sequence number for today
+    const now = new Date();
+    const yy = now.getFullYear().toString().slice(-2);
+    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+    const dd = now.getDate().toString().padStart(2, '0');
+    const datePrefix = `${yy}${mm}${dd}`;
+    
+    const result = await db.execute(sql`
+      WITH next_seq AS (
+        SELECT COALESCE(
+          MAX(CAST(SUBSTRING(invoice_number FROM 10 FOR 5) AS INTEGER)),
+          0
+        ) + 1 as seq
+        FROM invoices
+        WHERE invoice_number LIKE ${'INV' + datePrefix + '%'}
+      )
+      INSERT INTO invoices (
+        customer_id, 
+        subscription_id, 
+        invoice_number, 
+        amount, 
+        tax, 
+        total, 
+        status, 
+        due_date,
+        paid_date,
+        billing_period_start,
+        billing_period_end,
+        notes
+      )
+      SELECT 
+        ${invoiceData.customerId}::integer,
+        ${invoiceData.subscriptionId || null}::integer,
+        'INV' || ${datePrefix} || LPAD(seq::text, 5, '0'),
+        ${invoiceData.amount}::numeric,
+        ${invoiceData.tax || '0'}::numeric,
+        ${invoiceData.total}::numeric,
+        ${invoiceData.status || 'pending'}::varchar,
+        ${invoiceData.dueDate || null}::timestamp,
+        ${invoiceData.paidDate || null}::timestamp,
+        ${invoiceData.billingPeriodStart || null}::timestamp,
+        ${invoiceData.billingPeriodEnd || null}::timestamp,
+        ${invoiceData.notes || null}::text
+      FROM next_seq
+      RETURNING *
+    `);
+    
+    const invoice = result.rows[0] as Invoice;
     
     // Log activity
     await this.logActivity({

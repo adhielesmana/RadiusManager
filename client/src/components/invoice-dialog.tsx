@@ -65,7 +65,6 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
     ),
     defaultValues: {
       customerId: undefined,
-      invoiceNumber: "",
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
       amount: "0.00",
       tax: "0.00",
@@ -135,11 +134,9 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [amount, taxPercentage]);
 
-  // Reset form and generate fresh data when dialog opens (useLayoutEffect for synchronous update)
+  // Reset form when dialog opens (useLayoutEffect for synchronous update)
   useLayoutEffect(() => {
     if (open) {
-      const timestamp = Date.now();
-      const random = Math.random().toString(36).substring(2, 6).toUpperCase();
       const freshDueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       
       // Clear selected customer state synchronously
@@ -147,7 +144,6 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
       
       form.reset({
         customerId: undefined,
-        invoiceNumber: `INV-${timestamp}-${random}`,
         dueDate: freshDueDate,
         amount: "0.00",
         tax: "0.00",
@@ -203,50 +199,34 @@ export function InvoiceDialog({ open, onOpenChange }: InvoiceDialogProps) {
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="customerId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Customer *</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(parseInt(value))}
-                      value={field.value?.toString()}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-customer">
-                          <SelectValue placeholder="Select customer" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {customers.map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id.toString()}>
-                            {customer.fullName} ({customer.username})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="invoiceNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Invoice Number *</FormLabel>
+            <FormField
+              control={form.control}
+              name="customerId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Customer *</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    value={field.value?.toString()}
+                  >
                     <FormControl>
-                      <Input {...field} readOnly className="font-mono" data-testid="input-invoice-number" />
+                      <SelectTrigger data-testid="select-customer">
+                        <SelectValue placeholder="Select customer" />
+                      </SelectTrigger>
                     </FormControl>
-                    <FormDescription>Auto-generated</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    <SelectContent>
+                      {customers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id.toString()}>
+                          {customer.fullName} ({customer.username})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>Invoice number will be auto-generated (Format: INVYYMMDDNNNNN)</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {selectedCustomer && (
               <div className="p-4 bg-muted rounded-md space-y-2">
