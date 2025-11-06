@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema, insertUserSchema, insertNasSchema, insertPopSchema, insertOltSchema, insertOnuSchema } from "@shared/schema";
+import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema, insertUserSchema, insertNasSchema, insertPopSchema, insertOltSchema, insertDistributionBoxSchema, insertOnuSchema } from "@shared/schema";
 import { db } from "./db";
 import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -823,6 +823,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       await storage.deleteOlt(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // FTTH Distribution Box Endpoints - Admin only
+  app.get("/api/distribution-boxes", requireAdmin, async (_req, res) => {
+    try {
+      const boxes = await storage.getDistributionBoxes();
+      res.json(boxes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/distribution-boxes/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const box = await storage.getDistributionBox(id);
+      if (!box) {
+        return res.status(404).json({ error: "Distribution box not found" });
+      }
+      res.json(box);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/olts/:oltId/distribution-boxes", requireAdmin, async (req, res) => {
+    try {
+      const oltId = parseInt(req.params.oltId);
+      const boxes = await storage.getOltDistributionBoxes(oltId);
+      res.json(boxes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/olts/:oltId/pons/:ponPort/distribution-boxes", requireAdmin, async (req, res) => {
+    try {
+      const oltId = parseInt(req.params.oltId);
+      const ponPort = req.params.ponPort;
+      const boxes = await storage.getPonDistributionBoxes(oltId, ponPort);
+      res.json(boxes);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/distribution-boxes", requireAdmin, async (req, res) => {
+    try {
+      const validatedData = insertDistributionBoxSchema.parse(req.body);
+      const box = await storage.createDistributionBox(validatedData);
+      res.status(201).json(box);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/distribution-boxes/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertDistributionBoxSchema.partial().parse(req.body);
+      const box = await storage.updateDistributionBox(id, validatedData);
+      if (!box) {
+        return res.status(404).json({ error: "Distribution box not found" });
+      }
+      res.json(box);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/distribution-boxes/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteDistributionBox(id);
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });
