@@ -241,10 +241,10 @@ export default function CoveragePage() {
                           </CardDescription>
                           <div className="mt-2 flex flex-wrap gap-2">
                             <Badge variant="outline" className="text-xs">
-                              {pop?.name}
+                              {pop?.name || "Unknown POP"}
                             </Badge>
                             <Badge variant="secondary" className="text-xs">
-                              {olt?.name}
+                              {olt?.name || "Unknown OLT"}
                             </Badge>
                             <Badge variant="outline" className="text-xs font-mono">
                               {box.ponPort}
