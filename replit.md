@@ -45,13 +45,20 @@ The system is designed for deployment using Docker Compose, orchestrating Postgr
 - Shared database for both ISP Manager and FreeRADIUS
 - Auto-initialization of FreeRADIUS tables (radcheck, radreply, radacct, nas, etc.)
 - Environment-based configuration with .env file
+- Automated deployment scripts (setup.sh and deploy.sh)
 - Comprehensive README-DOCKER.md with setup, testing, and troubleshooting guides
-- Files created: Dockerfile, docker-compose.yml, .env.example, docker/freeradius/*, docker/postgres-init/*
+- Files created: Dockerfile, docker-compose.yml, .env.example, setup.sh, deploy.sh, docker/freeradius/*, docker/postgres-init/*
 
-**Quick Start:**
+**Quick Start (Automated):**
+```bash
+./setup.sh    # One-time setup
+./deploy.sh   # Build and deploy
+```
+
+**Quick Start (Manual):**
 ```bash
 cp .env.example .env
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 2025-11-06: Invoice Number Format Update
