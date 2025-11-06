@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,11 @@ interface LoginPageProps {
 export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+
+  const { data: settings } = useQuery<{ logoUrl?: string }>({
+    queryKey: ["/api/settings"],
+    retry: false,
+  });
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -69,9 +75,20 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <Gauge className="h-12 w-12 text-primary" />
+            {settings?.logoUrl ? (
+              <img 
+                src={settings.logoUrl} 
+                alt="Company Logo" 
+                className="h-16 w-auto max-w-[240px] object-contain"
+                data-testid="img-company-logo"
+              />
+            ) : (
+              <Gauge className="h-12 w-12 text-primary" data-testid="icon-default-logo" />
+            )}
           </div>
-          <CardTitle className="text-2xl font-bold">ISP Manager</CardTitle>
+          {!settings?.logoUrl && (
+            <CardTitle className="text-2xl font-bold">ISP Manager</CardTitle>
+          )}
           <CardDescription>
             Enter your credentials to access the system
           </CardDescription>

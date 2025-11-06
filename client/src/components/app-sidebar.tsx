@@ -86,18 +86,20 @@ export function AppSidebar() {
             <img 
               src={settings.logoUrl} 
               alt="Company logo" 
-              className="h-8 w-8 object-contain rounded-md"
+              className="h-10 w-auto max-w-[180px] object-contain"
               data-testid="img-sidebar-logo"
             />
           ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-              <Gauge className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <>
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                <Gauge className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="text-base font-semibold text-sidebar-foreground">ISP Manager</h1>
+                <p className="text-xs text-muted-foreground">Network Control</p>
+              </div>
+            </>
           )}
-          <div>
-            <h1 className="text-base font-semibold text-sidebar-foreground">ISP Manager</h1>
-            <p className="text-xs text-muted-foreground">Network Control</p>
-          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
