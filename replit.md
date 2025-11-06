@@ -37,6 +37,22 @@ The system is designed for deployment using Docker Compose, orchestrating Postgr
 
 ## Recent Changes
 
+### 2025-11-06: Persistent Session Storage
+✅ **PostgreSQL-backed sessions for "remember me" functionality**
+- Migrated from in-memory sessions to PostgreSQL storage using connect-pg-simple
+- Sessions now persist across server restarts and page refreshes
+- Cookie expiry extended to 30 days (from 7 days)
+- Automatic session pruning every hour to remove expired sessions
+- Database: Added session table (sid, sess, expire) with index on expire column
+- Files modified: server/index.ts, shared/schema.ts
+- E2E Tested: Session persistence verified across navigation and page refreshes
+
+**Features:**
+- Users stay logged in for 30 days without re-authentication
+- Sessions survive server restarts and deployments
+- Secure HTTP-only cookies prevent XSS attacks
+- Automatic cleanup of expired sessions in background
+
 ### 2025-11-06: FTTH Infrastructure Management
 ✅ **Complete EPON/GPON equipment management system**
 - Hierarchical FTTH architecture: POP → OLT → PON Port → Distribution Box → ONU → Customer
