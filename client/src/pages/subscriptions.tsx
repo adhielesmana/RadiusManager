@@ -12,13 +12,16 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Eye, Search } from "lucide-react";
+import { Eye, Search, Plus } from "lucide-react";
 import type { Subscription, Customer, Profile } from "@shared/schema";
 import { CustomerDetailsDialog } from "@/components/customer-details-dialog";
+import { SubscriptionDialog } from "@/components/subscription-dialog";
 
 export default function Subscriptions() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
+  const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
 
   const { data: subscriptions = [], isLoading: subscriptionsLoading } = useQuery<Subscription[]>({
     queryKey: ['/api/subscriptions'],
@@ -68,6 +71,16 @@ export default function Subscriptions() {
     );
   };
 
+  const handleAddSubscription = () => {
+    setEditingSubscription(null);
+    setIsSubscriptionDialogOpen(true);
+  };
+
+  const handleEditSubscription = (subscription: Subscription) => {
+    setEditingSubscription(subscription);
+    setIsSubscriptionDialogOpen(true);
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -75,6 +88,10 @@ export default function Subscriptions() {
           <h1 className="text-3xl font-bold tracking-tight">Subscriptions</h1>
           <p className="text-muted-foreground">Manage all customer subscriptions and service plans</p>
         </div>
+        <Button onClick={handleAddSubscription} data-testid="button-add-subscription">
+          <Plus className="h-4 w-4 mr-2" />
+          Add Subscription
+        </Button>
       </div>
 
       <Card>
@@ -167,6 +184,13 @@ export default function Subscriptions() {
         open={!!selectedCustomer}
         onOpenChange={(open) => !open && setSelectedCustomer(null)}
         customer={selectedCustomer}
+      />
+
+      <SubscriptionDialog
+        open={isSubscriptionDialogOpen}
+        onOpenChange={setIsSubscriptionDialogOpen}
+        customerId={editingSubscription?.customerId || 0}
+        subscription={editingSubscription}
       />
     </div>
   );

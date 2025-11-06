@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { insertSubscriptionSchema, type Subscription, type InsertSubscription, type Profile, type CompanyGroup } from "@shared/schema";
+import { insertSubscriptionSchema, type Subscription, type InsertSubscription, type Profile, type CompanyGroup, type Customer } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar } from "@/components/ui/calendar";
@@ -39,7 +39,7 @@ import { format } from "date-fns";
 interface SubscriptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  customerId: number;
+  customerId?: number;
   subscription: Subscription | null;
 }
 
@@ -57,10 +57,15 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
     enabled: open,
   });
 
+  const { data: customers = [] } = useQuery<Customer[]>({
+    queryKey: ['/api/customers'],
+    enabled: open && !customerId,
+  });
+
   const form = useForm<InsertSubscription>({
     resolver: zodResolver(insertSubscriptionSchema),
     defaultValues: {
-      customerId: customerId,
+      customerId: customerId || undefined,
       profileId: undefined,
       companyGroupId: 1,
       installationAddress: "",
@@ -100,7 +105,7 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
       });
     } else {
       form.reset({
-        customerId: customerId,
+        customerId: customerId || undefined,
         profileId: undefined,
         companyGroupId: 1,
         installationAddress: "",
@@ -176,6 +181,39 @@ export function SubscriptionDialog({ open, onOpenChange, customerId, subscriptio
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-4">
+              {!customerId && (
+                <>
+                  <h3 className="text-lg font-semibold">Customer</h3>
+                  <FormField
+                    control={form.control}
+                    name="customerId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Select Customer *</FormLabel>
+                        <Select
+                          onValueChange={(value) => field.onChange(parseInt(value))}
+                          value={field.value?.toString()}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-customer">
+                              <SelectValue placeholder="Select a customer" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {customers.map((customer) => (
+                              <SelectItem key={customer.id} value={customer.id.toString()}>
+                                {customer.fullName} ({customer.username})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
+              
               <h3 className="text-lg font-semibold">Service Details</h3>
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField
