@@ -195,6 +195,19 @@ export const radusergroup = pgTable("radusergroup", {
   priority: integer("priority").notNull().default(1),
 });
 
+// nas - Network Access Server (Routers) for FreeRADIUS
+export const nas = pgTable("nas", {
+  id: serial("id").primaryKey(),
+  nasname: varchar("nasname", { length: 128 }).notNull().unique(), // IP address or hostname
+  shortname: varchar("shortname", { length: 32 }), // Short identifier
+  type: varchar("type", { length: 30 }).notNull().default('other'), // mikrotik, cisco, ubiquiti, other
+  ports: integer("ports").default(1812), // RADIUS port (default 1812)
+  secret: varchar("secret", { length: 60 }).notNull(), // RADIUS shared secret (REQUIRED - no default for security)
+  server: varchar("server", { length: 64 }), // Optional server
+  community: varchar("community", { length: 50 }), // SNMP community
+  description: varchar("description", { length: 200 }).default('RADIUS Client'), // Description
+});
+
 // Relations
 export const customersRelations = relations(customers, ({ many }) => ({
   subscriptions: many(subscriptions),
@@ -341,6 +354,14 @@ export const insertPermissionSchema = createInsertSchema(permissions).omit({
   id: true,
 });
 
+export const insertNasSchema = createInsertSchema(nas).omit({ 
+  id: true,
+}).extend({
+  type: z.enum(['mikrotik', 'cisco', 'ubiquiti', 'other']),
+  secret: z.string().min(8, "Secret must be at least 8 characters"),
+  ports: z.number().int().positive().optional().default(1812),
+});
+
 // Types
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -380,3 +401,6 @@ export type Radreply = typeof radreply.$inferSelect;
 export type Radgroupcheck = typeof radgroupcheck.$inferSelect;
 export type Radgroupreply = typeof radgroupreply.$inferSelect;
 export type Radusergroup = typeof radusergroup.$inferSelect;
+
+export type Nas = typeof nas.$inferSelect;
+export type InsertNas = z.infer<typeof insertNasSchema>;

@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema, insertUserSchema } from "@shared/schema";
+import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema, insertUserSchema, insertNasSchema } from "@shared/schema";
 import { db } from "./db";
 import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -28,6 +28,14 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 function requireSuperadmin(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId || req.session.role !== 'superadmin') {
     return res.status(403).json({ error: 'Forbidden: Superadmin access required' });
+  }
+  next();
+}
+
+// Admin or Superadmin middleware
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId || (req.session.role !== 'superadmin' && req.session.role !== 'admin')) {
+    return res.status(403).json({ error: 'Forbidden: Admin access required' });
   }
   next();
 }
@@ -637,6 +645,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(settings);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // NAS (Router) Endpoints - Admin only
+  app.get("/api/nas", requireAdmin, async (_req, res) => {
+    try {
+      const nasList = await storage.getNasList();
+      res.json(nasList);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/nas/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const nasDevice = await storage.getNas(id);
+      if (!nasDevice) {
+        return res.status(404).json({ error: "NAS device not found" });
+      }
+      res.json(nasDevice);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/nas", requireAdmin, async (req, res) => {
+    try {
+      const validatedData = insertNasSchema.parse(req.body);
+      const nasDevice = await storage.createNas(validatedData);
+      res.status(201).json(nasDevice);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/nas/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertNasSchema.partial().parse(req.body);
+      const nasDevice = await storage.updateNas(id, validatedData);
+      if (!nasDevice) {
+        return res.status(404).json({ error: "NAS device not found" });
+      }
+      res.json(nasDevice);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/nas/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteNas(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 

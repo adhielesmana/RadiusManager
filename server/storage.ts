@@ -18,6 +18,7 @@ import {
   radreply,
   radusergroup,
   radgroupreply,
+  nas,
   type Customer,
   type InsertCustomer,
   type Subscription,
@@ -39,6 +40,8 @@ import {
   type InsertUser,
   type Permission,
   type InsertPermission,
+  type Nas,
+  type InsertNas,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -113,6 +116,13 @@ export interface IStorage {
   // Permission operations
   getUserPermissions(userId: number): Promise<Permission[]>;
   setUserPermissions(userId: number, menuIds: string[]): Promise<void>;
+  
+  // NAS (Router) operations
+  getNasList(): Promise<Nas[]>;
+  getNas(id: number): Promise<Nas | undefined>;
+  createNas(nas: InsertNas): Promise<Nas>;
+  updateNas(id: number, nas: Partial<InsertNas>): Promise<Nas | undefined>;
+  deleteNas(id: number): Promise<void>;
   
   // RADIUS operations
   syncSubscriptionToRadius(subscription: Subscription, customer: Customer): Promise<void>;
@@ -885,6 +895,39 @@ export class DatabaseStorage implements IStorage {
         priority: 1,
       });
     }
+  }
+
+  // NAS (Router) operations
+  async getNasList(): Promise<Nas[]> {
+    return await db.select().from(nas).orderBy(nas.nasname);
+  }
+
+  async getNas(id: number): Promise<Nas | undefined> {
+    const [nasDevice] = await db.select().from(nas).where(eq(nas.id, id));
+    return nasDevice || undefined;
+  }
+
+  async createNas(insertNas: InsertNas): Promise<Nas> {
+    const [nasDevice] = await db
+      .insert(nas)
+      .values(insertNas)
+      .returning();
+    
+    return nasDevice;
+  }
+
+  async updateNas(id: number, data: Partial<InsertNas>): Promise<Nas | undefined> {
+    const [nasDevice] = await db
+      .update(nas)
+      .set(data)
+      .where(eq(nas.id, id))
+      .returning();
+    
+    return nasDevice || undefined;
+  }
+
+  async deleteNas(id: number): Promise<void> {
+    await db.delete(nas).where(eq(nas.id, id));
   }
 }
 

@@ -1,4 +1,4 @@
-import { Home, Users, Gauge, FileText, Ticket, Settings, Network, Shield } from "lucide-react";
+import { Home, Users, Gauge, FileText, Ticket, Settings, Network, Shield, Server } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Settings as SettingsType } from "@shared/schema";
@@ -51,6 +51,12 @@ const menuItems = [
     url: "/tickets",
     icon: Ticket,
     roles: ["superadmin", "admin", "user"],
+  },
+  {
+    title: "Routers",
+    url: "/routers",
+    icon: Server,
+    roles: ["superadmin", "admin"],
   },
   {
     title: "Users",

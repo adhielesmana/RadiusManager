@@ -15,6 +15,7 @@ import Invoices from "@/pages/invoices";
 import Tickets from "@/pages/tickets";
 import Settings from "@/pages/settings";
 import Users from "@/pages/users";
+import Routers from "@/pages/routers";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { LogOut, User as UserIcon } from "lucide-react";
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/profiles" component={Profiles} />
       <Route path="/invoices" component={Invoices} />
       <Route path="/tickets" component={Tickets} />
+      <Route path="/routers" component={Routers} />
       <Route path="/users" component={Users} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
