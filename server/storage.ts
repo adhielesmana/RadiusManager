@@ -176,8 +176,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSubscription(insertSubscription: InsertSubscription): Promise<Subscription> {
-    // Generate subscription ID
-    const activationDate = insertSubscription.activationDate || new Date();
+    // Generate subscription ID using current date as activation date
+    const activationDate = new Date();
     const companyGroupId = insertSubscription.companyGroupId || 1;
     const subscriptionId = await this.generateSubscriptionId(companyGroupId, activationDate);
     

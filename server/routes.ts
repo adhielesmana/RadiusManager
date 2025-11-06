@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema } from "@shared/schema";
+import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema } from "@shared/schema";
 import { db } from "./db";
 import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -156,6 +156,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Subscription not found" });
       }
       res.json(subscription);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/subscriptions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteSubscription(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Company Groups Endpoints
+  app.get("/api/company-groups", async (_req, res) => {
+    try {
+      const groups = await storage.getCompanyGroups();
+      res.json(groups);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/company-groups/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const group = await storage.getCompanyGroup(id);
+      if (!group) {
+        return res.status(404).json({ error: "Company group not found" });
+      }
+      res.json(group);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/company-groups", async (req, res) => {
+    try {
+      const validatedData = insertCompanyGroupSchema.parse(req.body);
+      const group = await storage.createCompanyGroup(validatedData);
+      res.status(201).json(group);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/company-groups/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validatedData = insertCompanyGroupSchema.partial().parse(req.body);
+      const group = await storage.updateCompanyGroup(id, validatedData);
+      if (!group) {
+        return res.status(404).json({ error: "Company group not found" });
+      }
+      res.json(group);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
