@@ -37,6 +37,41 @@ The system is designed for deployment using Docker Compose, orchestrating Postgr
 
 ## Recent Changes
 
+### 2025-11-06: Existing Nginx Integration
+✅ **Seamless integration with servers running existing Nginx**
+- Automatic detection of existing Nginx on ports 80/443
+- Smart deployment mode selection (Docker Nginx vs existing Nginx)
+- Automated Nginx configuration generator for easy integration
+- No port conflicts when deploying alongside other web services
+- Support for multi-domain servers with centralized SSL management
+- Files created: generate-nginx-config.sh, updated setup.sh and deploy.sh
+
+**Use Case:** Server already running Nginx with other domains
+```bash
+# Server has: website1.com, website2.com on existing Nginx
+# Add ISP Manager on isp.example.com
+
+./setup.sh --domain isp.example.com --email admin@example.com
+# Detects existing Nginx, prompts to integrate
+# Choose Y → ISP Manager runs on port 5000 (backend only)
+
+./deploy.sh
+# Deploys backend only, no Docker Nginx
+
+./generate-nginx-config.sh
+# Generates config for your existing Nginx
+# Follow instructions to add domain to your Nginx
+# https://isp.example.com now works alongside other domains!
+```
+
+**Architecture:**
+```
+Internet → Your Nginx (80/443) → Routes by domain:
+   ├─ website1.com → /var/www/website1
+   ├─ website2.com → /var/www/website2  
+   └─ isp.example.com → localhost:5000 (ISP Manager)
+```
+
 ### 2025-11-06: SSL/Nginx Integration with Domain Support
 ✅ **Production-ready SSL deployment with automatic certificates**
 - Nginx reverse proxy with Let's Encrypt SSL support

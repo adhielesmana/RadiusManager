@@ -168,9 +168,57 @@ main() {
         exit 1
     fi
     
+    # Check for existing Nginx
+    print_header "Checking for Existing Web Server"
+    EXISTING_NGINX=false
+    USE_EXISTING_NGINX=false
+    
+    if check_port_in_use 80 || check_port_in_use 443; then
+        print_warning "Ports 80 and/or 443 are in use"
+        
+        # Check if it's Nginx
+        if command_exists nginx && systemctl is-active --quiet nginx 2>/dev/null; then
+            print_info "Detected system Nginx running"
+            EXISTING_NGINX=true
+            
+            if [ -n "$SSL_DOMAIN" ]; then
+                echo ""
+                print_warning "SSL mode requested, but ports 80/443 are already in use by Nginx"
+                print_info "ISP Manager can integrate with your existing Nginx!"
+                echo ""
+                echo "Options:"
+                echo "  1. Use existing Nginx (Recommended) - ISP Manager runs on port 5000"
+                echo "     We'll generate Nginx config for you to add to your existing setup"
+                echo ""
+                echo "  2. Skip SSL - Run ISP Manager standalone on port 5000"
+                echo ""
+                read -p "Use existing Nginx? (y/n) " -n 1 -r
+                echo ""
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    USE_EXISTING_NGINX=true
+                    print_success "Will configure for existing Nginx integration"
+                else
+                    SSL_DOMAIN=""
+                    SSL_EMAIL=""
+                    SSL_STAGING="false"
+                    print_info "SSL disabled - will run on port 5000"
+                fi
+            fi
+        else
+            print_warning "Another web server is using ports 80/443"
+            if [ -n "$SSL_DOMAIN" ]; then
+                print_error "Cannot use SSL mode - ports 80/443 are required"
+                print_info "Will configure for local mode on port 5000"
+                SSL_DOMAIN=""
+                SSL_EMAIL=""
+                SSL_STAGING="false"
+            fi
+        fi
+    fi
+    
     # Check ports availability
     print_header "Checking Port Availability"
-    if [ -n "$SSL_DOMAIN" ]; then
+    if [ -n "$SSL_DOMAIN" ] && [ "$USE_EXISTING_NGINX" = false ]; then
         check_port 80 "HTTP (for Let's Encrypt challenges)"
         check_port 443 "HTTPS"
     else
@@ -295,25 +343,34 @@ install_docker() {
     fi
 }
 
+# Check if a port is in use (returns 0 if in use, 1 if free)
+check_port_in_use() {
+    local PORT=$1
+    
+    if command_exists nc; then
+        nc -z localhost $PORT 2>/dev/null
+        return $?
+    elif command_exists lsof; then
+        lsof -i:$PORT >/dev/null 2>&1
+        return $?
+    elif command_exists ss; then
+        ss -tuln | grep -q ":$PORT "
+        return $?
+    else
+        # Cannot check, assume not in use
+        return 1
+    fi
+}
+
 # Check if a port is available
 check_port() {
     local PORT=$1
     local SERVICE=$2
     
-    if command_exists nc; then
-        if nc -z localhost $PORT 2>/dev/null; then
-            print_warning "Port $PORT ($SERVICE) is already in use"
-        else
-            print_success "Port $PORT ($SERVICE) is available"
-        fi
-    elif command_exists lsof; then
-        if lsof -i:$PORT >/dev/null 2>&1; then
-            print_warning "Port $PORT ($SERVICE) is already in use"
-        else
-            print_success "Port $PORT ($SERVICE) is available"
-        fi
+    if check_port_in_use $PORT; then
+        print_warning "Port $PORT ($SERVICE) is already in use"
     else
-        print_info "Cannot check port $PORT (nc or lsof not found)"
+        print_success "Port $PORT ($SERVICE) is available"
     fi
 }
 
@@ -349,7 +406,11 @@ setup_env_file() {
         
         # Configure SSL if domain provided
         if [ -n "$SSL_DOMAIN" ]; then
-            sed -i '' "s/ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            if [ "$USE_EXISTING_NGINX" = true ]; then
+                sed -i '' "s/ENABLE_SSL=.*/ENABLE_SSL=existing_nginx/" .env
+            else
+                sed -i '' "s/ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            fi
             sed -i '' "s/APP_DOMAIN=.*/APP_DOMAIN=$SSL_DOMAIN/" .env
             sed -i '' "s/LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$SSL_EMAIL/" .env
             sed -i '' "s/LE_STAGING=.*/LE_STAGING=$SSL_STAGING/" .env
@@ -362,7 +423,11 @@ setup_env_file() {
         
         # Configure SSL if domain provided
         if [ -n "$SSL_DOMAIN" ]; then
-            sed -i "s/ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            if [ "$USE_EXISTING_NGINX" = true ]; then
+                sed -i "s/ENABLE_SSL=.*/ENABLE_SSL=existing_nginx/" .env
+            else
+                sed -i "s/ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            fi
             sed -i "s/APP_DOMAIN=.*/APP_DOMAIN=$SSL_DOMAIN/" .env
             sed -i "s/LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$SSL_EMAIL/" .env
             sed -i "s/LE_STAGING=.*/LE_STAGING=$SSL_STAGING/" .env
@@ -374,12 +439,24 @@ setup_env_file() {
     # Show SSL reminder if enabled
     if [ -n "$SSL_DOMAIN" ]; then
         echo ""
-        print_warning "SSL/HTTPS is ENABLED"
-        print_info "Before deploying, ensure:"
-        echo "  1. DNS A/AAAA record for ${SSL_DOMAIN} points to this server's IP"
-        echo "  2. Ports 80 and 443 are accessible from the internet"
-        echo "  3. No firewall blocking Let's Encrypt validation"
-        echo ""
+        if [ "$USE_EXISTING_NGINX" = true ]; then
+            print_warning "EXISTING NGINX INTEGRATION MODE"
+            print_info "ISP Manager will run on port 5000 (backend mode)"
+            echo ""
+            print_info "After deployment, you need to:"
+            echo "  1. Run: ./generate-nginx-config.sh"
+            echo "  2. Add the generated config to your Nginx"
+            echo "  3. Configure SSL certificate for ${SSL_DOMAIN} in your Nginx"
+            echo "  4. Reload Nginx: sudo systemctl reload nginx"
+            echo ""
+        else
+            print_warning "SSL/HTTPS is ENABLED (Docker Nginx)"
+            print_info "Before deploying, ensure:"
+            echo "  1. DNS A/AAAA record for ${SSL_DOMAIN} points to this server's IP"
+            echo "  2. Ports 80 and 443 are accessible from the internet"
+            echo "  3. No firewall blocking Let's Encrypt validation"
+            echo ""
+        fi
         print_info "SSL Configuration:"
         echo "  Domain:  ${SSL_DOMAIN}"
         echo "  Email:   ${SSL_EMAIL}"

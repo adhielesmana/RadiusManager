@@ -85,6 +85,10 @@ check_prerequisites() {
             COMPOSE_FILES="-f docker-compose.yml -f docker-compose.ssl.yml"
             SSL_MODE="ENABLED"
             print_info "SSL Mode: ENABLED (using domain: ${APP_DOMAIN})"
+        elif [ "$ENABLE_SSL" = "existing_nginx" ]; then
+            COMPOSE_FILES="-f docker-compose.yml"
+            SSL_MODE="EXISTING_NGINX"
+            print_info "SSL Mode: EXISTING NGINX (backend on port 5000, domain: ${APP_DOMAIN})"
         else
             COMPOSE_FILES="-f docker-compose.yml"
             SSL_MODE="DISABLED"
@@ -226,6 +230,10 @@ show_access_info() {
     if [ "$SSL_MODE" = "ENABLED" ]; then
         echo -e "  URL:      ${BLUE}https://${APP_DOMAIN}${NC}"
         echo -e "  Note:     ${YELLOW}SSL certificate obtained from Let's Encrypt${NC}"
+    elif [ "$SSL_MODE" = "EXISTING_NGINX" ]; then
+        echo -e "  Backend:  ${BLUE}http://localhost:5000${NC}"
+        echo -e "  Public:   ${BLUE}https://${APP_DOMAIN}${NC} ${YELLOW}(via existing Nginx)${NC}"
+        echo -e "  Note:     ${YELLOW}Configure your Nginx with: ./generate-nginx-config.sh${NC}"
     else
         echo -e "  URL:      ${BLUE}http://localhost:5000${NC}"
     fi
@@ -362,6 +370,19 @@ main() {
         echo ""
         print_info "SSL certificate status:"
         docker compose $COMPOSE_FILES exec -T reverse-proxy certbot certificates 2>/dev/null || print_warning "Certificate info not available yet"
+    elif [ "$SSL_MODE" = "EXISTING_NGINX" ]; then
+        print_success "ISP Manager backend is running on http://localhost:5000"
+        echo ""
+        print_warning "NEXT STEPS:"
+        echo "  1. Generate Nginx configuration:"
+        echo "     ./generate-nginx-config.sh"
+        echo ""
+        echo "  2. Follow the instructions from the script to:"
+        echo "     - Copy config to your Nginx"
+        echo "     - Obtain SSL certificate (if needed)"
+        echo "     - Reload Nginx"
+        echo ""
+        print_info "Your ISP Manager will be accessible at: https://${APP_DOMAIN}"
     else
         print_success "ISP Manager is now running at http://localhost:5000"
     fi

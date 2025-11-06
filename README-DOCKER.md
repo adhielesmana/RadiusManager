@@ -118,6 +118,111 @@ To test SSL configuration without hitting Let's Encrypt rate limits:
 
 This uses Let's Encrypt's staging server, perfect for testing before going to production.
 
+### Integration with Existing Nginx
+
+**If your server already has Nginx running** (serving other domains/websites), ISP Manager can integrate seamlessly!
+
+The setup script will automatically detect existing Nginx and offer integration mode.
+
+**Scenario:** You have a server with Nginx already handling multiple domains like:
+- `website1.com` → Your existing website
+- `website2.com` → Another existing site  
+- You want to add: `isp.example.com` → ISP Manager
+
+**Setup Steps:**
+
+**1. Run setup with your domain:**
+```bash
+./setup.sh --domain isp.example.com --email admin@example.com
+```
+
+The script will detect existing Nginx on ports 80/443 and ask:
+```
+⚠ SSL mode requested, but ports 80/443 are already in use by Nginx
+ℹ ISP Manager can integrate with your existing Nginx!
+
+Options:
+  1. Use existing Nginx (Recommended) - ISP Manager runs on port 5000
+     We'll generate Nginx config for you to add to your existing setup
+
+  2. Skip SSL - Run ISP Manager standalone on port 5000
+
+Use existing Nginx? (y/n)
+```
+
+Choose **y** to use existing Nginx integration mode.
+
+**2. Deploy the backend:**
+```bash
+./deploy.sh
+```
+
+This deploys ISP Manager on port 5000 (backend only, no Docker Nginx).
+
+**3. Generate Nginx configuration:**
+```bash
+./generate-nginx-config.sh
+```
+
+This creates `isp-manager-nginx.conf` with:
+- Upstream configuration pointing to localhost:5000
+- HTTP to HTTPS redirect
+- SSL certificate paths
+- Security headers
+- WebSocket support
+- Reverse proxy settings
+
+**4. Add configuration to your Nginx:**
+```bash
+# Copy the generated config
+sudo cp isp-manager-nginx.conf /etc/nginx/sites-available/isp-manager
+
+# Enable the site
+sudo ln -s /etc/nginx/sites-available/isp-manager /etc/nginx/sites-enabled/
+
+# Test configuration
+sudo nginx -t
+```
+
+**5. Obtain SSL certificate (if not already done):**
+```bash
+sudo certbot certonly --nginx -d isp.example.com -m admin@example.com --agree-tos
+```
+
+**6. Reload Nginx:**
+```bash
+sudo systemctl reload nginx
+```
+
+**Done! Your ISP Manager is now accessible at https://isp.example.com** 🎉
+
+**Architecture in this mode:**
+```
+Internet → Your Nginx (ports 80/443) → Routes by domain:
+   ├─ website1.com → /var/www/website1
+   ├─ website2.com → /var/www/website2
+   └─ isp.example.com → http://localhost:5000 (ISP Manager backend)
+```
+
+**Benefits:**
+- ✅ No port conflicts
+- ✅ Single Nginx manages all domains
+- ✅ Centralized SSL certificate management
+- ✅ ISP Manager runs isolated in Docker on port 5000
+- ✅ Easy to add/remove alongside other services
+
+**Certificate Management:**
+Your existing Nginx handles SSL, so use your normal certbot workflow:
+```bash
+# Renew all certificates
+sudo certbot renew
+
+# View all certificates
+sudo certbot certificates
+
+# Nginx auto-reloads on renewal (if configured)
+```
+
 ### Manual Setup (Alternative)
 
 If you prefer manual setup or the scripts don't work on your system:
