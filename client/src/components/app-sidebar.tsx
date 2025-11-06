@@ -1,4 +1,4 @@
-import { Home, Users, Gauge, FileText, Ticket, Settings, Network, Shield, Server } from "lucide-react";
+import { Home, Users, Gauge, FileText, Ticket, Settings, Network, Shield, Server, MapPin, Radio, Box, Wifi } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Settings as SettingsType } from "@shared/schema";
@@ -72,6 +72,33 @@ const menuItems = [
   },
 ];
 
+const ftthMenuItems = [
+  {
+    title: "POPs",
+    url: "/ftth/pops",
+    icon: MapPin,
+    roles: ["superadmin", "admin"],
+  },
+  {
+    title: "OLTs",
+    url: "/ftth/olts",
+    icon: Radio,
+    roles: ["superadmin", "admin"],
+  },
+  {
+    title: "Distribution Boxes",
+    url: "/ftth/distribution-boxes",
+    icon: Box,
+    roles: ["superadmin", "admin"],
+  },
+  {
+    title: "ONUs",
+    url: "/ftth/onus",
+    icon: Wifi,
+    roles: ["superadmin", "admin"],
+  },
+];
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
@@ -81,6 +108,10 @@ export function AppSidebar() {
 
   // Filter menu items based on user role
   const visibleMenuItems = menuItems.filter((item) =>
+    user ? item.roles.includes(user.role) : false
+  );
+
+  const visibleFtthMenuItems = ftthMenuItems.filter((item) =>
     user ? item.roles.includes(user.role) : false
   );
 
@@ -126,6 +157,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {visibleFtthMenuItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>FTTH Management</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visibleFtthMenuItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location === item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
+                      <Link href={item.url}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
   );

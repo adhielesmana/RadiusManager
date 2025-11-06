@@ -369,6 +369,36 @@ export class DatabaseStorage implements IStorage {
       .limit(5);
   }
 
+  async generateSubscriptionId(companyGroupId: number, activationDate: Date): Promise<string> {
+    // Format date as YYMMDD
+    const year = activationDate.getFullYear().toString().slice(-2);
+    const month = (activationDate.getMonth() + 1).toString().padStart(2, '0');
+    const day = activationDate.getDate().toString().padStart(2, '0');
+    const datePrefix = `${year}${month}${day}`;
+    
+    // Get company group code
+    const [companyGroup] = await db
+      .select()
+      .from(companyGroups)
+      .where(eq(companyGroups.id, companyGroupId));
+    
+    if (!companyGroup) {
+      throw new Error('Company group not found');
+    }
+    
+    // Get next sequence number for this date and company
+    const [result] = await db.execute<{ seq: number }>(sql`
+      SELECT COALESCE(MAX(CAST(SUBSTRING(subscription_id FROM 8 FOR 4) AS INTEGER)), 0) + 1 AS seq
+      FROM subscriptions
+      WHERE subscription_id LIKE ${datePrefix + companyGroup.code}||'%'
+    `);
+    
+    const sequence = result?.seq || 1;
+    const sequenceStr = sequence.toString().padStart(4, '0');
+    
+    return `${datePrefix}${companyGroup.code}${sequenceStr}`;
+  }
+
   async getCompanyGroups(): Promise<CompanyGroup[]> {
     return await db.select().from(companyGroups).orderBy(companyGroups.name);
   }
