@@ -83,7 +83,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
   }, [open, pop?.id, form]);
 
   const createMutation = useMutation({
-    mutationFn: (data: InsertPop) => apiRequest('/api/pops', 'POST', data),
+    mutationFn: (data: InsertPop) => apiRequest('POST', '/api/pops', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/pops'] });
       toast({
@@ -103,7 +103,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: InsertPop) => apiRequest(`/api/pops/${pop?.id}`, 'PATCH', data),
+    mutationFn: (data: InsertPop) => apiRequest('PATCH', `/api/pops/${pop?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/pops'] });
       toast({
@@ -122,7 +122,7 @@ export function PopDialog({ open, onOpenChange, pop }: PopDialogProps) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => apiRequest(`/api/pops/${pop?.id}`, 'DELETE'),
+    mutationFn: () => apiRequest('DELETE', `/api/pops/${pop?.id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/pops'] });
       form.reset();

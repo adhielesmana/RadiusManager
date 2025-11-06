@@ -114,7 +114,7 @@ export function OltDialog({ open, onOpenChange, olt, pops }: OltDialogProps) {
   }, [open, olt?.id, form]);
 
   const createMutation = useMutation({
-    mutationFn: (data: InsertOlt) => apiRequest('/api/olts', 'POST', data),
+    mutationFn: (data: InsertOlt) => apiRequest('POST', '/api/olts', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/olts'] });
       toast({
@@ -134,7 +134,7 @@ export function OltDialog({ open, onOpenChange, olt, pops }: OltDialogProps) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: InsertOlt) => apiRequest(`/api/olts/${olt?.id}`, 'PATCH', data),
+    mutationFn: (data: InsertOlt) => apiRequest('PATCH', `/api/olts/${olt?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/olts'] });
       toast({
@@ -153,7 +153,7 @@ export function OltDialog({ open, onOpenChange, olt, pops }: OltDialogProps) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => apiRequest(`/api/olts/${olt?.id}`, 'DELETE'),
+    mutationFn: () => apiRequest('DELETE', `/api/olts/${olt?.id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/olts'] });
       form.reset();

@@ -95,7 +95,7 @@ export function DistributionBoxDialog({ open, onOpenChange, distributionBox, olt
   }, [open, distributionBox?.id, form]);
 
   const createMutation = useMutation({
-    mutationFn: (data: InsertDistributionBox) => apiRequest('/api/distribution-boxes', 'POST', data),
+    mutationFn: (data: InsertDistributionBox) => apiRequest('POST', '/api/distribution-boxes', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/distribution-boxes'] });
       toast({
@@ -115,7 +115,7 @@ export function DistributionBoxDialog({ open, onOpenChange, distributionBox, olt
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: InsertDistributionBox) => apiRequest(`/api/distribution-boxes/${distributionBox?.id}`, 'PATCH', data),
+    mutationFn: (data: InsertDistributionBox) => apiRequest('PATCH', `/api/distribution-boxes/${distributionBox?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/distribution-boxes'] });
       toast({
@@ -134,7 +134,7 @@ export function DistributionBoxDialog({ open, onOpenChange, distributionBox, olt
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => apiRequest(`/api/distribution-boxes/${distributionBox?.id}`, 'DELETE'),
+    mutationFn: () => apiRequest('DELETE', `/api/distribution-boxes/${distributionBox?.id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/distribution-boxes'] });
       form.reset();
