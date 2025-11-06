@@ -1,4 +1,4 @@
-import { Home, Users, Gauge, FileText, Ticket, Settings } from "lucide-react";
+import { Home, Users, Gauge, FileText, Ticket, Settings, Network } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { Settings as SettingsType } from "@shared/schema";
@@ -24,6 +24,11 @@ const menuItems = [
     title: "Customers",
     url: "/customers",
     icon: Users,
+  },
+  {
+    title: "Subscriptions",
+    url: "/subscriptions",
+    icon: Network,
   },
   {
     title: "Profiles",
