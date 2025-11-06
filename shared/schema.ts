@@ -149,6 +149,13 @@ export const permissions = pgTable("permissions", {
   canAccess: boolean("can_access").notNull().default(true),
 });
 
+// Session table for connect-pg-simple (persistent login sessions)
+export const session = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: text("sess").notNull(), // JSON session data
+  expire: timestamp("expire", { precision: 6 }).notNull(),
+});
+
 // FreeRADIUS Tables
 // radcheck - User authentication (username/password)
 export const radcheck = pgTable("radcheck", {

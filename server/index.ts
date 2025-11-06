@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
+import pg from "pg";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -20,15 +22,26 @@ declare module 'http' {
   }
 }
 
-// Session middleware
+// PostgreSQL session store for persistent sessions
+const PgSession = connectPgSimple(session);
+const pgPool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+// Session middleware with PostgreSQL store
 app.use(session({
+  store: new PgSession({
+    pool: pgPool,
+    tableName: 'session',
+    pruneSessionInterval: 60 * 60, // Prune expired sessions every hour
+  }),
   secret: process.env.SESSION_SECRET || 'isp-manager-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days for persistent login
   }
 }));
 
