@@ -21,6 +21,7 @@ import {
   nas,
   pops,
   olts,
+  distributionBoxes,
   onus,
   type Customer,
   type InsertCustomer,
@@ -49,6 +50,8 @@ import {
   type InsertPop,
   type Olt,
   type InsertOlt,
+  type DistributionBox,
+  type InsertDistributionBox,
   type Onu,
   type InsertOnu,
 } from "@shared/schema";
@@ -147,6 +150,15 @@ export interface IStorage {
   createOlt(olt: InsertOlt): Promise<Olt>;
   updateOlt(id: number, olt: Partial<InsertOlt>): Promise<Olt | undefined>;
   deleteOlt(id: number): Promise<void>;
+  
+  // FTTH Distribution Box operations
+  getDistributionBoxes(): Promise<DistributionBox[]>;
+  getDistributionBox(id: number): Promise<DistributionBox | undefined>;
+  getOltDistributionBoxes(oltId: number): Promise<DistributionBox[]>;
+  getPonDistributionBoxes(oltId: number, ponPort: string): Promise<DistributionBox[]>;
+  createDistributionBox(box: InsertDistributionBox): Promise<DistributionBox>;
+  updateDistributionBox(id: number, box: Partial<InsertDistributionBox>): Promise<DistributionBox | undefined>;
+  deleteDistributionBox(id: number): Promise<void>;
   
   // FTTH ONU operations
   getOnus(): Promise<Onu[]>;
@@ -1034,6 +1046,77 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOlt(id: number): Promise<void> {
     await db.delete(olts).where(eq(olts.id, id));
+  }
+  
+  // FTTH Distribution Box operations
+  async getDistributionBoxes(): Promise<DistributionBox[]> {
+    return await db.select().from(distributionBoxes).orderBy(desc(distributionBoxes.createdAt));
+  }
+
+  async getDistributionBox(id: number): Promise<DistributionBox | undefined> {
+    const [box] = await db.select().from(distributionBoxes).where(eq(distributionBoxes.id, id));
+    return box || undefined;
+  }
+
+  async getOltDistributionBoxes(oltId: number): Promise<DistributionBox[]> {
+    return await db.select().from(distributionBoxes).where(eq(distributionBoxes.oltId, oltId)).orderBy(distributionBoxes.ponPort, distributionBoxes.ponSlotIndex);
+  }
+
+  async getPonDistributionBoxes(oltId: number, ponPort: string): Promise<DistributionBox[]> {
+    return await db.select().from(distributionBoxes).where(
+      and(
+        eq(distributionBoxes.oltId, oltId),
+        eq(distributionBoxes.ponPort, ponPort)
+      )
+    ).orderBy(distributionBoxes.ponSlotIndex);
+  }
+
+  async createDistributionBox(box: InsertDistributionBox): Promise<DistributionBox> {
+    // Validate PON slot index (0-7)
+    if (box.ponSlotIndex < 0 || box.ponSlotIndex > 7) {
+      throw new Error("PON slot index must be between 0 and 7");
+    }
+
+    // Check if we already have 8 boxes on this PON
+    const existingBoxes = await this.getPonDistributionBoxes(box.oltId, box.ponPort);
+    if (existingBoxes.length >= 8) {
+      throw new Error("Maximum of 8 distribution boxes per PON port reached");
+    }
+
+    // Convert decimal strings to proper format
+    const boxData = {
+      ...box,
+      latitude: box.latitude ? String(box.latitude) : null,
+      longitude: box.longitude ? String(box.longitude) : null,
+    };
+
+    const [created] = await db.insert(distributionBoxes).values(boxData).returning();
+    return created;
+  }
+
+  async updateDistributionBox(id: number, box: Partial<InsertDistributionBox>): Promise<DistributionBox | undefined> {
+    // Validate PON slot index if provided
+    if (box.ponSlotIndex !== undefined && (box.ponSlotIndex < 0 || box.ponSlotIndex > 7)) {
+      throw new Error("PON slot index must be between 0 and 7");
+    }
+
+    // Convert decimal strings to proper format
+    const boxData = {
+      ...box,
+      latitude: box.latitude !== undefined ? String(box.latitude) : undefined,
+      longitude: box.longitude !== undefined ? String(box.longitude) : undefined,
+    };
+
+    const [updated] = await db
+      .update(distributionBoxes)
+      .set(boxData)
+      .where(eq(distributionBoxes.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteDistributionBox(id: number): Promise<void> {
+    await db.delete(distributionBoxes).where(eq(distributionBoxes.id, id));
   }
   
   // FTTH ONU operations

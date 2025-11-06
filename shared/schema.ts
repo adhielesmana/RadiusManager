@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, serial, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -246,10 +246,33 @@ export const olts = pgTable("olts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// distribution_boxes - Optical Distribution Points (ODP)
+export const distributionBoxes = pgTable("distribution_boxes", {
+  id: serial("id").primaryKey(),
+  oltId: integer("olt_id").notNull().references(() => olts.id),
+  ponPort: varchar("pon_port", { length: 20 }).notNull(), // e.g., "0/1" (slot/port)
+  ponSlotIndex: integer("pon_slot_index").notNull(), // 0-7 (8 boxes per PON)
+  name: varchar("name", { length: 100 }).notNull(),
+  code: varchar("code", { length: 50 }).notNull().unique(), // Unique identifier
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  address: text("address"),
+  maxOnus: integer("max_onus").notNull().default(16), // Capacity (default 16)
+  status: varchar("status", { length: 20 }).notNull().default('active'), // active, inactive, full
+  installedAt: timestamp("installed_at"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // Unique constraint: one box per PON slot
+  uniqueOltPonSlot: unique().on(table.oltId, table.ponPort, table.ponSlotIndex),
+}));
+
 // onus - Optical Network Units (Customer ONUs/ONTs)
 export const onus = pgTable("onus", {
   id: serial("id").primaryKey(),
   oltId: integer("olt_id").notNull().references(() => olts.id),
+  distributionBoxId: integer("distribution_box_id").references(() => distributionBoxes.id), // Link to distribution box
   subscriptionId: integer("subscription_id").references(() => subscriptions.id), // Link to customer subscription
   ponSerial: varchar("pon_serial", { length: 50 }).notNull().unique(), // PON Serial Number (GPON) or MAC (EPON)
   macAddress: varchar("mac_address", { length: 17 }),
@@ -360,6 +383,15 @@ export const oltsRelations = relations(olts, ({ one, many }) => ({
     fields: [olts.popId],
     references: [pops.id],
   }),
+  distributionBoxes: many(distributionBoxes),
+  onus: many(onus),
+}));
+
+export const distributionBoxesRelations = relations(distributionBoxes, ({ one, many }) => ({
+  olt: one(olts, {
+    fields: [distributionBoxes.oltId],
+    references: [olts.id],
+  }),
   onus: many(onus),
 }));
 
@@ -367,6 +399,10 @@ export const onusRelations = relations(onus, ({ one }) => ({
   olt: one(olts, {
     fields: [onus.oltId],
     references: [olts.id],
+  }),
+  distributionBox: one(distributionBoxes, {
+    fields: [onus.distributionBoxId],
+    references: [distributionBoxes.id],
   }),
   subscription: one(subscriptions, {
     fields: [onus.subscriptionId],
@@ -468,6 +504,17 @@ export const insertOltSchema = createInsertSchema(olts, {
   updatedAt: true,
 });
 
+export const insertDistributionBoxSchema = createInsertSchema(distributionBoxes, {
+  latitude: z.string().or(z.number()).optional().or(z.literal('')),
+  longitude: z.string().or(z.number()).optional().or(z.literal('')),
+  ponSlotIndex: z.number().int().min(0).max(7), // 0-7 (8 boxes per PON)
+  installedAt: z.coerce.date().optional(),
+}).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+});
+
 export const insertOnuSchema = createInsertSchema(onus, {
   macAddress: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/).optional().or(z.literal('')),
   signalRx: z.string().or(z.number()).optional().or(z.literal('')),
@@ -528,6 +575,9 @@ export type InsertPop = z.infer<typeof insertPopSchema>;
 
 export type Olt = typeof olts.$inferSelect;
 export type InsertOlt = z.infer<typeof insertOltSchema>;
+
+export type DistributionBox = typeof distributionBoxes.$inferSelect;
+export type InsertDistributionBox = z.infer<typeof insertDistributionBoxSchema>;
 
 export type Onu = typeof onus.$inferSelect;
 export type InsertOnu = z.infer<typeof insertOnuSchema>;
