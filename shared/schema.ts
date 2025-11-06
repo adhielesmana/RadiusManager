@@ -24,12 +24,14 @@ export const customers = pgTable("customers", {
 // One customer can have multiple subscriptions (different locations or profiles)
 export const subscriptions = pgTable("subscriptions", {
   id: serial("id").primaryKey(),
+  subscriptionId: varchar("subscription_id", { length: 20 }).notNull().unique(), // Format: YYMMDDXNNNN (auto-generated)
   customerId: integer("customer_id").notNull().references(() => customers.id),
   profileId: integer("profile_id").notNull().references(() => profiles.id),
+  companyGroupId: integer("company_group_id").notNull().references(() => companyGroups.id).default(1), // Company group
   installationAddress: text("installation_address").notNull(),
   ipAddress: varchar("ip_address", { length: 45 }), // Optional static IP (IPv4/IPv6), if empty router auto-assigns
   macAddress: varchar("mac_address", { length: 17 }), // Optional MAC address binding
-  status: varchar("status", { length: 20 }).notNull().default('active'), // active, suspended, expired
+  status: varchar("status", { length: 20 }).notNull().default('active'), // active, new_request, suspend, dismantle
   activationDate: timestamp("activation_date").defaultNow(),
   expiryDate: timestamp("expiry_date"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -109,6 +111,16 @@ export const activityLogs = pgTable("activity_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Company Groups - For multi-company ISP operations
+export const companyGroups = pgTable("company_groups", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 1 }).notNull().unique(), // Single digit code (1-9)
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Settings - Application-wide configuration (single row)
 export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
@@ -181,6 +193,10 @@ export const subscriptionsRelations = relations(subscriptions, ({ one, many }) =
     fields: [subscriptions.profileId],
     references: [profiles.id],
   }),
+  companyGroup: one(companyGroups, {
+    fields: [subscriptions.companyGroupId],
+    references: [companyGroups.id],
+  }),
   invoices: many(invoices),
 }));
 
@@ -225,6 +241,10 @@ export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
   }),
 }));
 
+export const companyGroupsRelations = relations(companyGroups, ({ many }) => ({
+  subscriptions: many(subscriptions),
+}));
+
 // Insert Schemas
 export const insertCustomerSchema = createInsertSchema(customers, {
   email: z.string().email().optional().or(z.literal('')),
@@ -237,7 +257,12 @@ export const insertSubscriptionSchema = createInsertSchema(subscriptions, {
   ipAddress: z.string().ip().optional().or(z.literal('')), // Optional static IP
   macAddress: z.string().regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/).optional().or(z.literal('')),
   expiryDate: z.coerce.date().optional(),
-}).omit({ id: true, createdAt: true, updatedAt: true, activationDate: true });
+}).omit({ id: true, createdAt: true, updatedAt: true, activationDate: true, subscriptionId: true }); // subscriptionId auto-generated
+
+export const insertCompanyGroupSchema = createInsertSchema(companyGroups).omit({ 
+  id: true, 
+  createdAt: true,
+});
 
 export const insertProfileSchema = createInsertSchema(profiles, {
   price: z.string().or(z.number()),
@@ -299,6 +324,9 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
 export type Settings = typeof settings.$inferSelect;
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
+
+export type CompanyGroup = typeof companyGroups.$inferSelect;
+export type InsertCompanyGroup = z.infer<typeof insertCompanyGroupSchema>;
 
 export type Radcheck = typeof radcheck.$inferSelect;
 export type Radreply = typeof radreply.$inferSelect;
