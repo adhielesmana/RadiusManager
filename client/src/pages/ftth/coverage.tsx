@@ -4,6 +4,7 @@ import type { Pop, Olt, DistributionBox, Onu } from "@shared/schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CoverageMap } from "@/components/ftth/coverage-map";
 
 export default function CoveragePage() {
   const { data: pops, isLoading: popsLoading } = useQuery<Pop[]>({
@@ -130,11 +131,43 @@ export default function CoveragePage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="hierarchy" className="space-y-4">
+      <Tabs defaultValue="map" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="hierarchy" data-testid="tab-hierarchy">Hierarchy View</TabsTrigger>
+          <TabsTrigger value="map" data-testid="tab-map">Map View</TabsTrigger>
+          <TabsTrigger value="hierarchy" data-testid="tab-hierarchy">Hierarchy</TabsTrigger>
           <TabsTrigger value="locations" data-testid="tab-locations">Locations</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="map" className="space-y-4">
+          {pops && olts && distributionBoxes && onus ? (
+            <>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-blue-500 border-2 border-white shadow"></div>
+                      <span className="text-muted-foreground">Points of Presence (POPs)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-amber-500 border-2 border-white shadow"></div>
+                      <span className="text-muted-foreground">Distribution Boxes (ODPs)</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <CoverageMap 
+                pops={pops} 
+                olts={olts} 
+                distributionBoxes={distributionBoxes}
+                onus={onus}
+              />
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-[600px] border rounded-lg">
+              <p className="text-muted-foreground">Loading map data...</p>
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="hierarchy" className="space-y-4">
           <div className="grid gap-6">
