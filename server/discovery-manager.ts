@@ -11,9 +11,24 @@ interface DiscoveryLoop {
   currentPromise: Promise<void> | null;
 }
 
+interface DetailJob {
+  ponSerial: string;
+  attempts: number;
+  enqueuedAt: Date;
+}
+
+interface DetailWorker {
+  oltId: number;
+  queue: DetailJob[];
+  isRunning: boolean;
+  maxConcurrency: number;
+  activePromises: Set<Promise<void>>;
+}
+
 class DiscoveryManager {
   private static instance: DiscoveryManager;
   private loops: Map<number, DiscoveryLoop> = new Map();
+  private detailWorkers: Map<number, DetailWorker> = new Map();
   private isShuttingDown: boolean = false;
 
   private constructor() {}
@@ -112,6 +127,152 @@ class DiscoveryManager {
 
     this.loops.set(oltId, loop);
     loop.currentPromise = this.runDiscoveryLoop(loop, olt);
+    
+    this.startDetailWorker(oltId);
+  }
+
+  private startDetailWorker(oltId: number) {
+    if (this.detailWorkers.has(oltId)) {
+      return;
+    }
+
+    const worker: DetailWorker = {
+      oltId,
+      queue: [],
+      isRunning: true,
+      maxConcurrency: 3,
+      activePromises: new Set(),
+    };
+
+    this.detailWorkers.set(oltId, worker);
+    console.log(`[DetailWorker] Started detail enrichment worker for OLT ${oltId}`);
+    
+    this.processDetailQueue(worker);
+  }
+
+  private enqueueDetailFetch(oltId: number, ponSerial: string) {
+    const worker = this.detailWorkers.get(oltId);
+    if (!worker) {
+      console.warn(`[DetailWorker] No worker found for OLT ${oltId}, skipping detail fetch for ${ponSerial}`);
+      return;
+    }
+
+    const existingJob = worker.queue.find(job => job.ponSerial === ponSerial);
+    if (existingJob) {
+      return;
+    }
+
+    worker.queue.push({
+      ponSerial,
+      attempts: 0,
+      enqueuedAt: new Date(),
+    });
+
+    console.log(`[DetailWorker] Enqueued detail fetch for ${ponSerial} (queue size: ${worker.queue.length})`);
+  }
+
+  private async processDetailQueue(worker: DetailWorker): Promise<void> {
+    while (worker.isRunning && !this.isShuttingDown) {
+      if (worker.queue.length === 0) {
+        await this.sleep(2000);
+        continue;
+      }
+
+      while (worker.activePromises.size < worker.maxConcurrency && worker.queue.length > 0) {
+        const job = worker.queue.shift();
+        if (!job) break;
+
+        const promise = this.fetchOnuDetails(worker.oltId, job)
+          .finally(() => {
+            worker.activePromises.delete(promise);
+          });
+        
+        worker.activePromises.add(promise);
+      }
+
+      if (worker.activePromises.size > 0) {
+        await Promise.race(worker.activePromises);
+      } else {
+        await this.sleep(1000);
+      }
+    }
+
+    console.log(`[DetailWorker] Worker stopped for OLT ${worker.oltId}`);
+  }
+
+  private async fetchOnuDetails(oltId: number, job: DetailJob): Promise<void> {
+    try {
+      const onu = await db.query.onus.findFirst({
+        where: eq(onus.ponSerial, job.ponSerial),
+      });
+
+      if (!onu) {
+        console.warn(`[DetailWorker] ONU ${job.ponSerial} not found in database`);
+        return;
+      }
+
+      if (!onu.onuId) {
+        console.log(`[DetailWorker] Skipping ${job.ponSerial} - no ONU ID assigned yet`);
+        return;
+      }
+
+      const olt = await db.query.olts.findFirst({
+        where: eq(olts.id, oltId),
+      });
+
+      if (!olt) {
+        console.error(`[DetailWorker] OLT ${oltId} not found`);
+        return;
+      }
+
+      console.log(`[DetailWorker] Fetching details for ${job.ponSerial} (${onu.ponPort}:${onu.onuId})`);
+      
+      const detailInfo = await oltService.getOnuDetailInfo(olt, onu.ponPort, onu.onuId);
+      
+      const updateData: any = {
+        detailsRawOutput: detailInfo.rawOutput,
+      };
+
+      if (detailInfo.name) updateData.onuName = detailInfo.name;
+      if (detailInfo.deviceType) updateData.deviceType = detailInfo.deviceType;
+      if (detailInfo.state) updateData.state = detailInfo.state;
+      if (detailInfo.adminState) updateData.adminState = detailInfo.adminState;
+      if (detailInfo.phaseState) updateData.phaseState = detailInfo.phaseState;
+      if (detailInfo.configState) updateData.configState = detailInfo.configState;
+      if (detailInfo.authenticationMode) updateData.authenticationMode = detailInfo.authenticationMode;
+      if (detailInfo.snBind) updateData.snBind = detailInfo.snBind;
+      if (detailInfo.password) updateData.onuPassword = detailInfo.password;
+      if (detailInfo.vportMode) updateData.vportMode = detailInfo.vportMode;
+      if (detailInfo.dbaMode) updateData.dbaMode = detailInfo.dbaMode;
+      if (detailInfo.onuStatus) updateData.onuStatusDetail = detailInfo.onuStatus;
+      if (detailInfo.fec) updateData.fec = detailInfo.fec;
+      if (detailInfo.onlineDuration) updateData.onlineDuration = detailInfo.onlineDuration;
+      if (detailInfo.lastAuthpassTime) updateData.lastAuthpassTime = new Date(detailInfo.lastAuthpassTime);
+      if (detailInfo.lastOfflineTime) updateData.lastOfflineTime = new Date(detailInfo.lastOfflineTime);
+      if (detailInfo.lastDownCause) updateData.lastDownCause = detailInfo.lastDownCause;
+      if (detailInfo.currentChannel) updateData.currentChannel = detailInfo.currentChannel;
+      if (detailInfo.lineProfile) updateData.lineProfile = detailInfo.lineProfile;
+      if (detailInfo.serviceProfile) updateData.serviceProfile = detailInfo.serviceProfile;
+      if (detailInfo.distance) updateData.distance = detailInfo.distance;
+      if (detailInfo.description) updateData.description = detailInfo.description;
+
+      await db.update(onus)
+        .set(updateData)
+        .where(eq(onus.ponSerial, job.ponSerial));
+
+      console.log(`[DetailWorker] ✓ Enriched ${job.ponSerial} with details`);
+    } catch (error: any) {
+      console.error(`[DetailWorker] Error fetching details for ${job.ponSerial}:`, error.message);
+      
+      job.attempts++;
+      if (job.attempts < 3) {
+        const worker = this.detailWorkers.get(oltId);
+        if (worker) {
+          worker.queue.push(job);
+          console.log(`[DetailWorker] Requeued ${job.ponSerial} (attempt ${job.attempts}/3)`);
+        }
+      }
+    }
   }
 
   async stopDiscovery(oltId: number): Promise<void> {
@@ -123,6 +284,13 @@ class DiscoveryManager {
 
     console.log(`[DiscoveryManager] Stopping discovery for OLT ${oltId}`);
     loop.shouldStop = true;
+
+    const worker = this.detailWorkers.get(oltId);
+    if (worker) {
+      worker.isRunning = false;
+      await Promise.all(worker.activePromises);
+      this.detailWorkers.delete(oltId);
+    }
 
     await db.update(discoveryRuns)
       .set({ status: 'stopped', completedAt: new Date() })
@@ -169,6 +337,8 @@ class DiscoveryManager {
                 where: eq(onus.ponSerial, discoveredOnu.ponSerial),
               });
 
+              let needsDetails = false;
+
               if (existing) {
                 if (existing.dataHash === dbPayload.dataHash) {
                   skippedCount++;
@@ -182,11 +352,19 @@ class DiscoveryManager {
                     .where(eq(onus.ponSerial, discoveredOnu.ponSerial));
                   updatedCount++;
                   console.log(`[DiscoveryManager] Updated ONU ${discoveredOnu.ponSerial}`);
+                  
+                  needsDetails = !existing.onuName && discoveredOnu.onuId !== null;
                 }
               } else {
                 await db.insert(onus).values(dbPayload);
                 updatedCount++;
                 console.log(`[DiscoveryManager] Inserted new ONU ${discoveredOnu.ponSerial}`);
+                
+                needsDetails = discoveredOnu.onuId !== null;
+              }
+
+              if (needsDetails) {
+                this.enqueueDetailFetch(loop.oltId, discoveredOnu.ponSerial);
               }
             }
 
@@ -250,14 +428,70 @@ class DiscoveryManager {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  async initializeAllActiveOlts(): Promise<void> {
+    try {
+      console.log('[DiscoveryManager] Initializing discovery for all active OLTs...');
+      
+      const activeOlts = await db.query.olts.findMany();
+      
+      if (activeOlts.length === 0) {
+        console.log('[DiscoveryManager] No OLTs found in database');
+        return;
+      }
+
+      console.log(`[DiscoveryManager] Found ${activeOlts.length} OLTs to initialize`);
+
+      for (const olt of activeOlts) {
+        try {
+          console.log(`[DiscoveryManager] Starting discovery for OLT ${olt.id} (${olt.name})`);
+          await this.startDiscovery(olt.id);
+        } catch (error: any) {
+          console.error(`[DiscoveryManager] Failed to start discovery for OLT ${olt.id} (${olt.name}):`, error.message);
+          
+          await db.insert(discoveryRuns).values({
+            oltId: olt.id,
+            status: 'error',
+            startedAt: new Date(),
+            completedAt: new Date(),
+            errorMessage: `Initialization failed: ${error.message}`,
+            discoveredCount: 0,
+            updatedCount: 0,
+            skippedCount: 0,
+          }).onConflictDoUpdate({
+            target: discoveryRuns.oltId,
+            set: {
+              status: 'error',
+              errorMessage: `Initialization failed: ${error.message}`,
+              completedAt: new Date(),
+            },
+          });
+        }
+      }
+
+      console.log('[DiscoveryManager] Discovery initialization complete');
+    } catch (error: any) {
+      console.error('[DiscoveryManager] Error during initialization:', error.message);
+    }
+  }
+
   async shutdown(): Promise<void> {
-    console.log('[DiscoveryManager] Shutting down all discovery loops...');
+    console.log('[DiscoveryManager] Shutting down all discovery loops and detail workers...');
     this.isShuttingDown = true;
+
+    const workers = Array.from(this.detailWorkers.values());
+    for (const worker of workers) {
+      worker.isRunning = false;
+    }
+
+    const detailWorkerPromises = workers.map(
+      worker => Promise.all(worker.activePromises)
+    );
+    await Promise.all(detailWorkerPromises);
 
     const stopPromises = Array.from(this.loops.keys()).map(oltId => this.stopDiscovery(oltId));
     await Promise.all(stopPromises);
 
-    console.log('[DiscoveryManager] All discovery loops stopped');
+    console.log('[DiscoveryManager] All discovery loops and detail workers stopped');
   }
 }
 
