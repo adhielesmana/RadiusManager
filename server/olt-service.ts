@@ -1,6 +1,7 @@
 import { Telnet } from 'telnet-client';
 import type { Olt } from '@shared/schema';
 import { snmpService } from './snmp-service';
+import { TelnetSession } from './telnet-session';
 
 export interface DiscoveredOnu {
   ponSerial: string;
@@ -13,13 +14,22 @@ export interface DiscoveredOnu {
 }
 
 export class OltService {
-  async discoverOnus(olt: Olt): Promise<DiscoveredOnu[]> {
+  async discoverOnus(
+    olt: Olt,
+    onBatch?: (onus: DiscoveredOnu[], progress: { discovered: number, total: number }) => Promise<void>
+  ): Promise<DiscoveredOnu[]> {
     // Try SNMP first if enabled, fallback to Telnet on any failure
     if (olt.snmpEnabled) {
       try {
         console.log(`[OLT Service] Attempting SNMP discovery for ${olt.name}`);
         const onus = await snmpService.discoverOnus(olt);
         console.log(`[OLT Service] SNMP discovery successful: ${onus.length} ONUs found`);
+        
+        // Call onBatch for SNMP results if provided
+        if (onBatch && onus.length > 0) {
+          await onBatch(onus, { discovered: onus.length, total: onus.length });
+        }
+        
         return onus;
       } catch (snmpError: any) {
         console.error(`[OLT Service] SNMP discovery failed for ${olt.name}:`, snmpError.message);
@@ -27,7 +37,7 @@ export class OltService {
         if (olt.telnetEnabled) {
           console.log(`[OLT Service] Falling back to Telnet discovery for ${olt.name}`);
           try {
-            return await this.discoverOnusByTelnet(olt);
+            return await this.discoverOnusByTelnet(olt, onBatch);
           } catch (telnetError: any) {
             throw new Error(`Both SNMP and Telnet discovery failed. SNMP: ${snmpError.message}, Telnet: ${telnetError.message}`);
           }
@@ -37,23 +47,74 @@ export class OltService {
       }
     } else if (olt.telnetEnabled) {
       console.log(`[OLT Service] Using Telnet discovery for ${olt.name} (SNMP not enabled)`);
-      return await this.discoverOnusByTelnet(olt);
+      return await this.discoverOnusByTelnet(olt, onBatch);
     } else {
       throw new Error(`Neither SNMP nor Telnet is enabled for OLT: ${olt.name}`);
     }
   }
 
-  private async discoverOnusByTelnet(olt: Olt): Promise<DiscoveredOnu[]> {
+  private async discoverOnusByTelnet(
+    olt: Olt,
+    onBatch?: (onus: DiscoveredOnu[], progress: { discovered: number, total: number }) => Promise<void>
+  ): Promise<DiscoveredOnu[]> {
     const vendor = olt.vendor.toLowerCase();
     
     if (vendor.includes('zte')) {
-      return await this.discoverZteOnus(olt);
+      return await this.discoverZteOnus(olt, onBatch);
     } else if (vendor.includes('hioso')) {
-      return await this.discoverHiosoOnus(olt);
+      return await this.discoverHiosoOnus(olt, onBatch);
     } else {
       throw new Error(`Unsupported OLT vendor: ${olt.vendor}`);
     }
   }
+  private async execZteCommand(connection: Telnet, command: string, timeoutMs: number = 6000): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let buffer = '';
+      let promptCount = 0;
+      const promptPattern = /[A-Z0-9\-_]+[#>]\s*$/m;
+      
+      const socket = connection.getSocket();
+      if (!socket) {
+        return reject(new Error('Socket not available'));
+      }
+
+      const dataHandler = (data: Buffer) => {
+        const chunk = data.toString();
+        buffer += chunk;
+        
+        // Check if we hit a prompt
+        if (promptPattern.test(buffer)) {
+          promptCount++;
+          
+          // First prompt is the leftover from previous command, skip it
+          // Second prompt means command finished
+          if (promptCount >= 2) {
+            socket.removeListener('data', dataHandler);
+            clearTimeout(timeout);
+            
+            // Extract output between prompts
+            const lines = buffer.split('\n');
+            const output = lines.slice(1, -1).join('\n').trim();
+            resolve(output);
+          }
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        socket.removeListener('data', dataHandler);
+        // Even if timeout, return what we got
+        const lines = buffer.split('\n');
+        const output = lines.slice(1, -1).join('\n').trim();
+        resolve(output || buffer);
+      }, timeoutMs);
+
+      socket.on('data', dataHandler);
+      
+      // Send the command
+      connection.send(command + '\n').catch(reject);
+    });
+  }
+
   private async connectTelnet(olt: Olt): Promise<Telnet> {
     const connection = new Telnet();
     
@@ -62,16 +123,17 @@ export class OltService {
       port: olt.telnetPort || 23,
       timeout: 15000,
       negotiationMandatory: false,
-      shellPrompt: /[#>$%]/,
+      shellPrompt: /[#>]/,  // Simple prompt matcher
       loginPrompt: /([Ll]ogin|[Uu]sername|[Uu]ser)[: ]*$/,
       passwordPrompt: /[Pp]assword[: ]*$/,
       username: olt.telnetUsername || olt.username || '',
       password: olt.telnetPassword || olt.password || '',
-      execTimeout: 10000,
+      execTimeout: 20000,  // Longer timeout for slow responses
       irs: '\r\n',
-      ors: '\n',
-      sendTimeout: 2000,
+      ors: '\r\n',  // CRITICAL: Use CRLF for ZTE CLI
+      sendTimeout: 3000,  // Longer send timeout
       stripShellPrompt: false,
+      removeEcho: false,  // Keep echo for debugging
     };
 
     console.log(`[Telnet] Connecting to ${olt.vendor} OLT ${olt.name} at ${olt.ipAddress}:${olt.telnetPort || 23}`);
@@ -79,10 +141,20 @@ export class OltService {
     await connection.connect(params);
     console.log(`[Telnet] Connected successfully to ${olt.name}`);
     
-    // ZTE-specific: Stay in exec mode (do NOT enter config mode)
-    // ZTE C320 show commands work in privileged exec mode, not config mode
+    // Flush initial prompt buffer
+    await connection.send('\n');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // ZTE-specific: Disable pagination and stay in exec mode
     if (olt.vendor.toLowerCase().includes('zte')) {
-      console.log(`[Telnet] ZTE detected - staying in privileged exec mode for show commands`);
+      console.log(`[Telnet] ZTE detected - disabling pagination`);
+      try {
+        await connection.exec('terminal length 0');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`[Telnet] Pagination disabled successfully`);
+      } catch (err: any) {
+        console.warn(`[Telnet] Could not disable pagination:`, err.message);
+      }
     }
     
     // HIOSO-specific authentication: access password + enable config
@@ -133,13 +205,8 @@ export class OltService {
       }
     }
     
-    // Test command to verify we're authenticated properly
-    try {
-      const versionResponse = await connection.exec('show version');
-      console.log(`[Telnet] Version response (${versionResponse.length} chars):`, versionResponse.substring(0, 200));
-    } catch (err: any) {
-      console.warn(`[Telnet] Show version failed:`, err.message);
-    }
+    // Small delay after authentication to let the session stabilize
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     // For HIOSO, discover available commands in EPON mode using "?"
     if (olt.vendor.toLowerCase().includes('hioso')) {
@@ -157,80 +224,244 @@ export class OltService {
     return connection;
   }
 
-  private async discoverZteOnus(olt: Olt): Promise<DiscoveredOnu[]> {
-    const connection = await this.connectTelnet(olt);
+  private async discoverZteOnus(
+    olt: Olt,
+    onBatch?: (onus: DiscoveredOnu[], progress: { discovered: number, total: number }) => Promise<void>
+  ): Promise<DiscoveredOnu[]> {
+    const POOL_SIZE = 2; // Create 2 Telnet sessions for parallel processing
+    const BATCH_SIZE = 10; // Save every 10 ONUs
+    const sessions: TelnetSession[] = [];
     const onus: DiscoveredOnu[] = [];
 
+    // Shared buffer for batching across workers
+    const sharedBuffer: DiscoveredOnu[] = [];
+    let totalDiscovered = 0;
+    let totalOnuCount = 0;
+
+    // Mutex-like function to safely push to shared buffer
+    const addToBuffer = async (newOnus: DiscoveredOnu[]) => {
+      sharedBuffer.push(...newOnus);
+      totalDiscovered += newOnus.length;
+      
+      // If buffer reaches batch size, save and clear
+      if (sharedBuffer.length >= BATCH_SIZE && onBatch) {
+        const batch = sharedBuffer.splice(0, BATCH_SIZE);
+        await onBatch(batch, { discovered: totalDiscovered, total: totalOnuCount });
+      }
+    };
+
     try {
-      console.log(`[ZTE Discovery] Querying all ONUs with: show gpon onu state`);
+      // Step 1: Get ONU list using a temporary session
+      console.log(`[ZTE Discovery] Step 1: Getting ONU list with 'show gpon onu state'`);
+      const tempSession = new TelnetSession();
+      await this.connectTelnetSession(tempSession, olt);
       
-      const response = await connection.exec('show gpon onu state');
-      console.log(`[ZTE Discovery] Response length: ${response?.length || 0} chars`);
+      const stateResponse = await tempSession.execute('show gpon onu state', 8000);
+      await tempSession.close();
       
-      if (response && response.length > 0) {
-        console.log(`[ZTE Discovery] First 500 chars:`, response.substring(0, 500));
-        
-        const lines = response.split('\n');
-        for (const line of lines) {
-          const onuMatch = line.match(/gpon-onu_1\/(\d+)\/(\d+):(\d+)/);
-          if (onuMatch) {
-            const slot = parseInt(onuMatch[1]);
-            const port = parseInt(onuMatch[2]);
-            const onuId = parseInt(onuMatch[3]);
-            
-            const phaseMatch = line.match(/\s+(working|LOS|offline|online)\s*$/i);
-            const status = phaseMatch ? phaseMatch[1].toLowerCase() : 'unknown';
-            
-            console.log(`[ZTE Discovery] Found ONU: slot=${slot}, port=${port}, id=${onuId}, status=${status}`);
-            
-            let ponSerial = '';
-            let macAddress = null;
-            let signalRx = null;
-            let signalTx = null;
+      console.log(`[ZTE Discovery] Response length: ${stateResponse?.length || 0} chars`);
+      
+      if (!stateResponse || stateResponse.length === 0) {
+        console.log(`[ZTE Discovery] No ONUs found (empty response)`);
+        return onus;
+      }
 
-            try {
-              const onuInterface = `gpon-onu_1/${slot}/${port}:${onuId}`;
-              
-              const detailCmd = `show gpon onu detail-info ${onuInterface}`;
-              const detailResponse = await connection.exec(detailCmd);
-              
-              const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
-              if (serialMatch) {
-                ponSerial = serialMatch[1];
-              }
+      console.log(`[ZTE Discovery] First 300 chars:`, stateResponse.substring(0, 300));
 
-              const powerCmd = `show pon power attenuation ${onuInterface}`;
-              const powerResponse = await connection.exec(powerCmd);
-              const rxMatch = powerResponse.match(/up\s+Rx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
-              const txMatch = powerResponse.match(/down\s+Tx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
-              
-              if (rxMatch) signalRx = parseFloat(rxMatch[1]);
-              if (txMatch) signalTx = parseFloat(txMatch[1]);
-
-            } catch (detailErr: any) {
-              console.warn(`[ZTE] Could not fetch details for ONU ${slot}/${port}:${onuId}:`, detailErr.message);
-            }
-
-            if (ponSerial) {
-              onus.push({
-                ponSerial,
-                ponPort: `${slot}/${port}`,
-                onuId,
-                macAddress,
-                signalRx,
-                signalTx,
-                status: status === 'working' || status === 'online' ? 'online' : 'offline',
-              });
-            }
-          }
+      const onuList: Array<{slot: number, port: number, onuId: number, status: string}> = [];
+      const lines = stateResponse.split('\n');
+      
+      for (const line of lines) {
+        const match = line.match(/(\d+)\/(\d+)\/(\d+):(\d+)\s+(\w+)\s+(\w+)\s+(\w+)/);
+        if (match) {
+          const slot = parseInt(match[2]);
+          const port = parseInt(match[3]);
+          const onuId = parseInt(match[4]);
+          const phaseState = match[7];
+          
+          onuList.push({ slot, port, onuId, status: phaseState.toLowerCase() });
         }
-      } else {
-        console.log(`[ZTE Discovery] No ONUs found or empty response`);
+      }
+
+      totalOnuCount = onuList.length;
+      console.log(`[ZTE Discovery] Found ${totalOnuCount} ONUs in state list`);
+
+      if (onuList.length === 0) {
+        return onus;
+      }
+
+      // Step 2: Create connection pool
+      console.log(`[ZTE Discovery] Step 2: Creating pool of ${POOL_SIZE} Telnet sessions`);
+      for (let i = 0; i < POOL_SIZE; i++) {
+        const session = new TelnetSession();
+        await this.connectTelnetSession(session, olt);
+        sessions.push(session);
+      }
+
+      // Step 3: Split ONUs into chunks for parallel processing
+      const chunkSize = Math.ceil(onuList.length / POOL_SIZE);
+      const chunks: Array<typeof onuList> = [];
+      for (let i = 0; i < POOL_SIZE; i++) {
+        const start = i * chunkSize;
+        const end = Math.min(start + chunkSize, onuList.length);
+        chunks.push(onuList.slice(start, end));
+      }
+
+      console.log(`[ZTE Discovery] Step 3: Processing ${totalOnuCount} ONUs across ${POOL_SIZE} sessions`);
+      
+      // Process each chunk in parallel with batching
+      const chunkResults = await Promise.all(
+        chunks.map((chunk, index) => 
+          this.processOnuChunkWithBatching(chunk, sessions[index], index, addToBuffer)
+        )
+      );
+
+      // Flatten results
+      for (const chunkOnus of chunkResults) {
+        onus.push(...chunkOnus);
+      }
+
+      // Save remaining ONUs in buffer
+      if (sharedBuffer.length > 0 && onBatch) {
+        await onBatch(sharedBuffer, { discovered: totalDiscovered, total: totalOnuCount });
+        sharedBuffer.length = 0;
       }
 
       console.log(`[ZTE Discovery] Total ONUs discovered: ${onus.length}`);
     } finally {
-      connection.end();
+      // Close all sessions
+      for (const session of sessions) {
+        await session.close();
+      }
+    }
+
+    return onus;
+  }
+
+  private async connectTelnetSession(session: TelnetSession, olt: Olt): Promise<void> {
+    const params = {
+      host: olt.ipAddress,
+      port: olt.telnetPort || 23,
+      username: olt.telnetUsername!,
+      password: olt.telnetPassword!,
+      timeout: 15000,
+      shellPrompt: /[#>]/,
+      loginPrompt: /Username:/i,
+      passwordPrompt: /Password:/i,
+      ors: '\r\n',
+      sendTimeout: 10000,
+      execTimeout: 10000,
+    };
+
+    await session.connect(params);
+    
+    // Disable pagination for ZTE
+    if (olt.vendor.toLowerCase().includes('zte')) {
+      await session.execute('terminal length 0', 5000);
+    }
+  }
+
+  private async processOnuChunk(
+    onuList: Array<{slot: number, port: number, onuId: number, status: string}>,
+    session: TelnetSession,
+    workerId: number
+  ): Promise<DiscoveredOnu[]> {
+    const onus: DiscoveredOnu[] = [];
+    
+    for (const onu of onuList) {
+      const onuInterface = `gpon-onu_1/${onu.slot}/${onu.port}:${onu.onuId}`;
+      
+      try {
+        const detailResponse = await session.execute(`show gpon onu detail-info ${onuInterface}`, 6000);
+        
+        const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
+        const ponSerial = serialMatch ? serialMatch[1] : `UNKNOWN_${onu.slot}_${onu.port}_${onu.onuId}`;
+        
+        let signalRx = null;
+        let signalTx = null;
+
+        try {
+          const powerResponse = await session.execute(`show pon power attenuation ${onuInterface}`, 6000);
+          
+          const rxMatch = powerResponse.match(/up\s+Rx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
+          const txMatch = powerResponse.match(/down\s+Tx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
+          
+          if (rxMatch) signalRx = parseFloat(rxMatch[1]);
+          if (txMatch) signalTx = parseFloat(txMatch[1]);
+        } catch (powerErr) {
+          // Skip power if unavailable
+        }
+
+        onus.push({
+          ponSerial,
+          ponPort: `${onu.slot}/${onu.port}`,
+          onuId: onu.onuId,
+          macAddress: null,
+          signalRx,
+          signalTx,
+          status: onu.status === 'working' ? 'online' : 'offline',
+        });
+
+        console.log(`[ZTE Worker ${workerId}] ✓ ${onu.slot}/${onu.port}:${onu.onuId} - ${ponSerial}`);
+      } catch (err: any) {
+        console.warn(`[ZTE Worker ${workerId}] Failed to get details for ${onuInterface}:`, err.message);
+      }
+    }
+
+    return onus;
+  }
+
+  private async processOnuChunkWithBatching(
+    onuList: Array<{slot: number, port: number, onuId: number, status: string}>,
+    session: TelnetSession,
+    workerId: number,
+    addToBuffer: (onus: DiscoveredOnu[]) => Promise<void>
+  ): Promise<DiscoveredOnu[]> {
+    const onus: DiscoveredOnu[] = [];
+    
+    for (const onu of onuList) {
+      const onuInterface = `gpon-onu_1/${onu.slot}/${onu.port}:${onu.onuId}`;
+      
+      try {
+        const detailResponse = await session.execute(`show gpon onu detail-info ${onuInterface}`, 6000);
+        
+        const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
+        const ponSerial = serialMatch ? serialMatch[1] : `UNKNOWN_${onu.slot}_${onu.port}_${onu.onuId}`;
+        
+        let signalRx = null;
+        let signalTx = null;
+
+        try {
+          const powerResponse = await session.execute(`show pon power attenuation ${onuInterface}`, 6000);
+          
+          const rxMatch = powerResponse.match(/up\s+Rx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
+          const txMatch = powerResponse.match(/down\s+Tx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
+          
+          if (rxMatch) signalRx = parseFloat(rxMatch[1]);
+          if (txMatch) signalTx = parseFloat(txMatch[1]);
+        } catch (powerErr) {
+          // Skip power if unavailable
+        }
+
+        const discoveredOnu: DiscoveredOnu = {
+          ponSerial,
+          ponPort: `${onu.slot}/${onu.port}`,
+          onuId: onu.onuId,
+          macAddress: null,
+          signalRx,
+          signalTx,
+          status: onu.status === 'working' ? 'online' : 'offline',
+        };
+
+        onus.push(discoveredOnu);
+        
+        // Add to shared buffer for batching
+        await addToBuffer([discoveredOnu]);
+
+        console.log(`[ZTE Worker ${workerId}] ✓ ${onu.slot}/${onu.port}:${onu.onuId} - ${ponSerial}`);
+      } catch (err: any) {
+        console.warn(`[ZTE Worker ${workerId}] Failed to get details for ${onuInterface}:`, err.message);
+      }
     }
 
     return onus;
@@ -299,7 +530,10 @@ export class OltService {
     return onus;
   }
 
-  private async discoverHiosoOnus(olt: Olt): Promise<DiscoveredOnu[]> {
+  private async discoverHiosoOnus(
+    olt: Olt,
+    onBatch?: (onus: DiscoveredOnu[], progress: { discovered: number, total: number }) => Promise<void>
+  ): Promise<DiscoveredOnu[]> {
     const connection = await this.connectTelnet(olt);
     const onus: DiscoveredOnu[] = [];
     const errors: string[] = [];

@@ -848,47 +848,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "OLT not found" });
       }
 
-      const discoveredOnus = await oltService.discoverOnus(olt);
-      
       let created = 0;
       let updated = 0;
       const errors: string[] = [];
 
-      for (const discoveredOnu of discoveredOnus) {
-        try {
-          const existingOnu = await storage.getOnuBySerial(discoveredOnu.ponSerial);
-          
-          if (existingOnu) {
-            await storage.updateOnu(existingOnu.id, {
-              ponPort: discoveredOnu.ponPort,
-              onuId: discoveredOnu.onuId ?? undefined,
-              macAddress: discoveredOnu.macAddress ?? undefined,
-              signalRx: discoveredOnu.signalRx?.toString() ?? undefined,
-              signalTx: discoveredOnu.signalTx?.toString() ?? undefined,
-              status: discoveredOnu.status,
-            });
-            updated++;
-          } else {
-            if (!discoveredOnu.ponSerial.startsWith('UNKNOWN_')) {
-              await storage.createOnu({
-                oltId: olt.id,
-                ponSerial: discoveredOnu.ponSerial,
+      // Callback to save ONUs in batches during discovery
+      const onBatch = async (onus: any[], progress: { discovered: number, total: number }) => {
+        console.log(`[Discovery Progress] Saving batch of ${onus.length} ONUs (${progress.discovered}/${progress.total} total)`);
+        
+        const results = await Promise.allSettled(
+          onus.map(async (discoveredOnu) => {
+            const existingOnu = await storage.getOnuBySerial(discoveredOnu.ponSerial);
+            
+            if (existingOnu) {
+              await storage.updateOnu(existingOnu.id, {
                 ponPort: discoveredOnu.ponPort,
                 onuId: discoveredOnu.onuId ?? undefined,
                 macAddress: discoveredOnu.macAddress ?? undefined,
                 signalRx: discoveredOnu.signalRx?.toString() ?? undefined,
                 signalTx: discoveredOnu.signalTx?.toString() ?? undefined,
                 status: discoveredOnu.status,
-                subscriptionId: undefined,
-                distributionBoxId: undefined,
               });
-              created++;
+              return { action: 'updated' };
+            } else {
+              if (!discoveredOnu.ponSerial.startsWith('UNKNOWN_')) {
+                await storage.createOnu({
+                  oltId: olt.id,
+                  ponSerial: discoveredOnu.ponSerial,
+                  ponPort: discoveredOnu.ponPort,
+                  onuId: discoveredOnu.onuId ?? undefined,
+                  macAddress: discoveredOnu.macAddress ?? undefined,
+                  signalRx: discoveredOnu.signalRx?.toString() ?? undefined,
+                  signalTx: discoveredOnu.signalTx?.toString() ?? undefined,
+                  status: discoveredOnu.status,
+                  subscriptionId: undefined,
+                  distributionBoxId: undefined,
+                });
+                return { action: 'created' };
+              }
+              return { action: 'skipped' };
             }
+          })
+        );
+
+        // Count results
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            if (result.value.action === 'created') created++;
+            if (result.value.action === 'updated') updated++;
+          } else {
+            errors.push(result.reason?.message || 'Unknown error');
           }
-        } catch (error: any) {
-          errors.push(`Error processing ONU ${discoveredOnu.ponSerial}: ${error.message}`);
         }
-      }
+
+        console.log(`[Discovery Progress] Batch saved: ${created} created, ${updated} updated so far`);
+      };
+
+      const discoveredOnus = await oltService.discoverOnus(olt, onBatch);
 
       res.json({
         success: true,
