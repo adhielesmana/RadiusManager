@@ -28,7 +28,9 @@ export class OltService {
       execTimeout: 5000,
     };
 
+    console.log(`[Telnet] Connecting to ${olt.vendor} OLT ${olt.name} at ${olt.ipAddress}:${olt.telnetPort || 23}`);
     await connection.connect(params);
+    console.log(`[Telnet] Connected successfully to ${olt.name}`);
     return connection;
   }
 
@@ -145,25 +147,34 @@ export class OltService {
     const errors: string[] = [];
 
     try {
-      const totalPorts = olt.totalPonSlots || 8;
+      const totalPorts = (olt.totalPonSlots || 1) * (olt.portsPerSlot || 8);
+      console.log(`[HIOSO Discovery] OLT: ${olt.name}, Scanning ${totalPorts} PON ports`);
 
       for (let port = 1; port <= totalPorts; port++) {
         const ponPort = `0/${port}`;
         const command = `show epon onu-information interface epon ${ponPort}`;
         
         try {
+          console.log(`[HIOSO] Executing: ${command}`);
           const response = await connection.exec(command);
+          console.log(`[HIOSO] Port ${ponPort} response (${response.length} chars):`, response.substring(0, 200));
           const discovered = await this.parseHiosoOnuResponse(response, ponPort, connection);
+          console.log(`[HIOSO] Port ${ponPort} found ${discovered.length} ONUs`);
           onus.push(...discovered);
         } catch (err: any) {
+          console.error(`[HIOSO] Port ${ponPort} error:`, err.message);
           errors.push(`Port ${ponPort}: ${err.message}`);
           continue;
         }
       }
 
+      console.log(`[HIOSO Discovery] OLT: ${olt.name}, Total ONUs discovered: ${onus.length}`);
       if (errors.length > 0) {
         console.warn(`HIOSO OLT ${olt.name} discovery warnings:`, errors.slice(0, 5));
       }
+    } catch (topErr: any) {
+      console.error(`[HIOSO Discovery] Fatal error for OLT ${olt.name}:`, topErr.message);
+      throw topErr;
     } finally {
       connection.end();
     }
