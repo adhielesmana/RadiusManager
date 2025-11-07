@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Pencil, Eye, X } from "lucide-react";
+import { Plus, Trash2, Pencil, Eye, X, Search, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -10,6 +10,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { OnuDialog } from "@/components/ftth/onu-dialog";
 import { OnuDetailDialog } from "@/components/ftth/onu-detail-dialog";
 import { useState, useMemo } from "react";
@@ -28,12 +36,20 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+type SortField = 'ponSerial' | 'oltName' | 'odcNumber' | 'status' | 'signalRx' | 'signalTx';
+type SortDirection = 'asc' | 'desc';
+
 export default function OnusPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [editingOnu, setEditingOnu] = useState<Onu | null>(null);
   const [viewingOnu, setViewingOnu] = useState<Onu | null>(null);
   const [deletingOnu, setDeletingOnu] = useState<Onu | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [sortField, setSortField] = useState<SortField>('ponSerial');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [location, setLocation] = useLocation();
@@ -142,12 +158,94 @@ export default function OnusPage() {
   const viewingOltName = viewingOnu ? getOltName(viewingOnu.oltId) : undefined;
   const viewingBoxName = viewingOnu ? getBoxInfo(viewingOnu.distributionBoxId).code : undefined;
 
-  // Filter ONUs by OLT if filterOltId is set
-  const filteredOnus = useMemo(() => {
-    if (!onus) return [];
-    if (filterOltId === null) return onus;
-    return onus.filter(onu => onu.oltId === filterOltId);
-  }, [onus, filterOltId]);
+  // Handle sorting
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1); // Reset to first page when sorting
+  };
+
+  // Filter, search, sort, and paginate ONUs
+  const { filteredOnus, totalPages, startIndex, endIndex } = useMemo(() => {
+    if (!onus) return { filteredOnus: [], totalPages: 0, startIndex: 0, endIndex: 0 };
+    
+    // First filter by OLT if needed
+    let filtered = filterOltId !== null ? onus.filter(onu => onu.oltId === filterOltId) : onus;
+    
+    // Then apply search
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(onu => {
+        const oltName = getOltName(onu.oltId).toLowerCase();
+        const boxInfo = getBoxInfo(onu.distributionBoxId);
+        const customerInfo = getCustomerInfo(onu.subscriptionId);
+        
+        return (
+          onu.ponSerial.toLowerCase().includes(search) ||
+          oltName.includes(search) ||
+          boxInfo.code.toLowerCase().includes(search) ||
+          boxInfo.name.toLowerCase().includes(search) ||
+          (customerInfo?.name.toLowerCase().includes(search)) ||
+          (customerInfo?.subscriptionId.toLowerCase().includes(search)) ||
+          onu.status.toLowerCase().includes(search) ||
+          ((onu as any).odcNumber?.toString().includes(search))
+        );
+      });
+    }
+    
+    // Then sort
+    filtered.sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+      
+      switch (sortField) {
+        case 'ponSerial':
+          aVal = a.ponSerial;
+          bVal = b.ponSerial;
+          break;
+        case 'oltName':
+          aVal = getOltName(a.oltId);
+          bVal = getOltName(b.oltId);
+          break;
+        case 'odcNumber':
+          aVal = (a as any).odcNumber || 0;
+          bVal = (b as any).odcNumber || 0;
+          break;
+        case 'status':
+          aVal = a.status;
+          bVal = b.status;
+          break;
+        case 'signalRx':
+          aVal = a.signalRx || -999;
+          bVal = b.signalRx || -999;
+          break;
+        case 'signalTx':
+          aVal = a.signalTx || -999;
+          bVal = b.signalTx || -999;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (sortDirection === 'asc') {
+        return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+      } else {
+        return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+      }
+    });
+    
+    // Calculate pagination
+    const totalPages = Math.ceil(filtered.length / rowsPerPage);
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    const endIndex = Math.min(startIndex + rowsPerPage, filtered.length);
+    const paginated = filtered.slice(startIndex, endIndex);
+    
+    return { filteredOnus: paginated, totalPages, startIndex, endIndex };
+  }, [onus, filterOltId, searchTerm, sortField, sortDirection, currentPage, rowsPerPage, olts, distributionBoxes, subscriptions, customers]);
 
   const clearFilter = () => {
     setLocation('/ftth/onus');
@@ -202,19 +300,83 @@ export default function OnusPage() {
         </Button>
       </div>
 
+      <div className="px-6 flex items-center gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search by PON serial, OLT, customer, status..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1); // Reset to first page on search
+            }}
+            className="pl-9"
+            data-testid="input-search-onus"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Rows per page:</span>
+          <Select value={rowsPerPage.toString()} onValueChange={(val) => {
+            setRowsPerPage(parseInt(val));
+            setCurrentPage(1);
+          }}>
+            <SelectTrigger className="w-20" data-testid="select-rows-per-page">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10">10</SelectItem>
+              <SelectItem value="25">25</SelectItem>
+              <SelectItem value="50">50</SelectItem>
+              <SelectItem value="100">100</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>PON Serial</TableHead>
-            <TableHead>OLT</TableHead>
-            <TableHead>ODC</TableHead>
-            <TableHead>ONU ID</TableHead>
-            <TableHead>Distribution Box</TableHead>
-            <TableHead>Customer</TableHead>
-            <TableHead>Signal RX</TableHead>
-            <TableHead>Signal TX</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead className="whitespace-nowrap">
+              <Button variant="ghost" size="sm" className="h-auto p-0 hover:bg-transparent" onClick={() => handleSort('ponSerial')}>
+                PON Serial
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              </Button>
+            </TableHead>
+            <TableHead className="whitespace-nowrap">
+              <Button variant="ghost" size="sm" className="h-auto p-0 hover:bg-transparent" onClick={() => handleSort('oltName')}>
+                OLT
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              </Button>
+            </TableHead>
+            <TableHead className="whitespace-nowrap">
+              <Button variant="ghost" size="sm" className="h-auto p-0 hover:bg-transparent" onClick={() => handleSort('odcNumber')}>
+                ODC
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              </Button>
+            </TableHead>
+            <TableHead className="whitespace-nowrap">ONU ID</TableHead>
+            <TableHead className="whitespace-nowrap">ODP</TableHead>
+            <TableHead className="whitespace-nowrap">Customer</TableHead>
+            <TableHead className="whitespace-nowrap">
+              <Button variant="ghost" size="sm" className="h-auto p-0 hover:bg-transparent" onClick={() => handleSort('signalRx')}>
+                RX
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              </Button>
+            </TableHead>
+            <TableHead className="whitespace-nowrap">
+              <Button variant="ghost" size="sm" className="h-auto p-0 hover:bg-transparent" onClick={() => handleSort('signalTx')}>
+                TX
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              </Button>
+            </TableHead>
+            <TableHead className="whitespace-nowrap">
+              <Button variant="ghost" size="sm" className="h-auto p-0 hover:bg-transparent" onClick={() => handleSort('status')}>
+                Status
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              </Button>
+            </TableHead>
+            <TableHead className="text-right whitespace-nowrap">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -315,6 +477,55 @@ export default function OnusPage() {
             )}
           </TableBody>
       </Table>
+
+      <div className="px-6 flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          Showing {onus && onus.length > 0 ? startIndex + 1 : 0} to {endIndex} of {onus?.length || 0} total ONUs
+          {searchTerm && <span className="ml-1">(filtered)</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            data-testid="button-first-page"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            data-testid="button-prev-page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex items-center gap-1">
+            <span className="text-sm font-medium">Page {currentPage}</span>
+            <span className="text-sm text-muted-foreground">of {totalPages || 1}</span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages || totalPages === 0}
+            data-testid="button-next-page"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages || totalPages === 0}
+            data-testid="button-last-page"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
 
       <OnuDialog
         open={dialogOpen}
