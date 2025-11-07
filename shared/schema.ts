@@ -307,10 +307,25 @@ export const onus = pgTable("onus", {
   vlanId: integer("vlan_id"), // Service VLAN
   bandwidthProfile: varchar("bandwidth_profile", { length: 100 }),
   description: text("description"), // Customer name or identifier
+  dataHash: varchar("data_hash", { length: 64 }), // SHA256 hash for change detection
   lastOnline: timestamp("last_online"),
   registrationDate: timestamp("registration_date").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Discovery Runs - Track background OLT discovery state
+export const discoveryRuns = pgTable("discovery_runs", {
+  id: serial("id").primaryKey(),
+  oltId: integer("olt_id").notNull().references(() => olts.id).unique(), // One active discovery per OLT
+  status: varchar("status", { length: 20 }).notNull().default('running'), // running, stopped, error
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  lastRunAt: timestamp("last_run_at"),
+  errorMessage: text("error_message"),
+  discoveredCount: integer("discovered_count").default(0),
+  updatedCount: integer("updated_count").default(0),
+  skippedCount: integer("skipped_count").default(0),
 });
 
 // Relations
@@ -557,6 +572,14 @@ export const insertOnuSchema = createInsertSchema(onus, {
   updatedAt: true,
 });
 
+export const insertDiscoveryRunSchema = createInsertSchema(discoveryRuns, {
+  startedAt: z.coerce.date().optional(),
+  completedAt: z.coerce.date().optional(),
+  lastRunAt: z.coerce.date().optional(),
+}).omit({ 
+  id: true,
+});
+
 // Types
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -611,3 +634,6 @@ export type InsertDistributionBox = z.infer<typeof insertDistributionBoxSchema>;
 
 export type Onu = typeof onus.$inferSelect;
 export type InsertOnu = z.infer<typeof insertOnuSchema>;
+
+export type DiscoveryRun = typeof discoveryRuns.$inferSelect;
+export type InsertDiscoveryRun = z.infer<typeof insertDiscoveryRunSchema>;
