@@ -7,6 +7,7 @@ import { customers, subscriptions, profiles, invoices, tickets } from "@shared/s
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { oltService } from "./olt-service";
+import discoveryManager from "./discovery-manager";
 
 // Hardcoded superadmin credentials
 const SUPERADMIN = {
@@ -1091,6 +1092,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       await storage.deleteOnu(id);
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Discovery Manager Endpoints - Admin only
+  app.post("/api/discovery/start/:oltId", requireAdmin, async (req, res) => {
+    try {
+      const oltId = parseInt(req.params.oltId);
+      await discoveryManager.startDiscovery(oltId);
+      res.json({ message: `Background discovery started for OLT ${oltId}` });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/discovery/stop/:oltId", requireAdmin, async (req, res) => {
+    try {
+      const oltId = parseInt(req.params.oltId);
+      await discoveryManager.stopDiscovery(oltId);
+      res.json({ message: `Discovery stopped for OLT ${oltId}` });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/discovery/status", requireAdmin, async (req, res) => {
+    try {
+      const oltId = req.query.oltId ? parseInt(req.query.oltId as string) : undefined;
+      const status = await discoveryManager.getStatus(oltId);
+      res.json(status);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

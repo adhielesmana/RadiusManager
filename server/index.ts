@@ -4,6 +4,7 @@ import connectPgSimple from "connect-pg-simple";
 import pg from "pg";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import discoveryManager from "./discovery-manager";
 
 const app = express();
 
@@ -115,4 +116,22 @@ app.use((req, res, next) => {
   }, () => {
     log(`serving on port ${port}`);
   });
+
+  // Graceful shutdown handling for discovery manager
+  const gracefulShutdown = async (signal: string) => {
+    log(`${signal} received, shutting down gracefully...`);
+    await discoveryManager.shutdown();
+    server.close(() => {
+      log('Server closed');
+      process.exit(0);
+    });
+
+    setTimeout(() => {
+      log('Forcing shutdown after 10s timeout');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 })();
