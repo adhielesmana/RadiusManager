@@ -1,5 +1,6 @@
 import { Telnet } from 'telnet-client';
 import type { Olt } from '@shared/schema';
+import { snmpService } from './snmp-service';
 
 export interface DiscoveredOnu {
   ponSerial: string;
@@ -12,6 +13,47 @@ export interface DiscoveredOnu {
 }
 
 export class OltService {
+  async discoverOnus(olt: Olt): Promise<DiscoveredOnu[]> {
+    // Try SNMP first if enabled, fallback to Telnet on any failure
+    if (olt.snmpEnabled) {
+      try {
+        console.log(`[OLT Service] Attempting SNMP discovery for ${olt.name}`);
+        const onus = await snmpService.discoverOnus(olt);
+        console.log(`[OLT Service] SNMP discovery successful: ${onus.length} ONUs found`);
+        return onus;
+      } catch (snmpError: any) {
+        console.error(`[OLT Service] SNMP discovery failed for ${olt.name}:`, snmpError.message);
+        
+        if (olt.telnetEnabled) {
+          console.log(`[OLT Service] Falling back to Telnet discovery for ${olt.name}`);
+          try {
+            return await this.discoverOnusByTelnet(olt);
+          } catch (telnetError: any) {
+            throw new Error(`Both SNMP and Telnet discovery failed. SNMP: ${snmpError.message}, Telnet: ${telnetError.message}`);
+          }
+        } else {
+          throw new Error(`SNMP discovery failed and Telnet is not enabled: ${snmpError.message}`);
+        }
+      }
+    } else if (olt.telnetEnabled) {
+      console.log(`[OLT Service] Using Telnet discovery for ${olt.name} (SNMP not enabled)`);
+      return await this.discoverOnusByTelnet(olt);
+    } else {
+      throw new Error(`Neither SNMP nor Telnet is enabled for OLT: ${olt.name}`);
+    }
+  }
+
+  private async discoverOnusByTelnet(olt: Olt): Promise<DiscoveredOnu[]> {
+    const vendor = olt.vendor.toLowerCase();
+    
+    if (vendor.includes('zte')) {
+      return await this.discoverZteOnus(olt);
+    } else if (vendor.includes('hioso')) {
+      return await this.discoverHiosoOnus(olt);
+    } else {
+      throw new Error(`Unsupported OLT vendor: ${olt.vendor}`);
+    }
+  }
   private async connectTelnet(olt: Olt): Promise<Telnet> {
     const connection = new Telnet();
     
@@ -107,22 +149,6 @@ export class OltService {
     }
     
     return connection;
-  }
-
-  async discoverOnus(olt: Olt): Promise<DiscoveredOnu[]> {
-    if (!olt.telnetEnabled) {
-      throw new Error('Telnet is not enabled for this OLT');
-    }
-
-    const vendor = olt.vendor.toLowerCase();
-    
-    if (vendor.includes('zte')) {
-      return await this.discoverZteOnus(olt);
-    } else if (vendor.includes('hioso')) {
-      return await this.discoverHiosoOnus(olt);
-    } else {
-      throw new Error(`Unsupported OLT vendor: ${olt.vendor}`);
-    }
   }
 
   private async discoverZteOnus(olt: Olt): Promise<DiscoveredOnu[]> {
