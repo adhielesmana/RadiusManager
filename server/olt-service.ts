@@ -79,6 +79,20 @@ export class OltService {
     await connection.connect(params);
     console.log(`[Telnet] Connected successfully to ${olt.name}`);
     
+    // ZTE-specific authentication: enter configuration mode with "conf t"
+    if (olt.vendor.toLowerCase().includes('zte')) {
+      console.log(`[Telnet] ZTE detected - entering configuration mode`);
+      
+      try {
+        console.log(`[Telnet] Sending "conf t" command...`);
+        await connection.send('conf t\n');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        console.log(`[Telnet] Configuration mode entered successfully`);
+      } catch (err: any) {
+        console.warn(`[Telnet] Configuration mode warning:`, err.message);
+      }
+    }
+    
     // HIOSO-specific authentication: access password + enable config
     if (olt.vendor.toLowerCase().includes('hioso')) {
       console.log(`[Telnet] HIOSO detected - performing additional authentication steps`);
