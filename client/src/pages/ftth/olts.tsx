@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { Plus, Eye, Pencil, Network } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Eye, Pencil, Network, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -15,13 +15,18 @@ import { OltDetailDialog } from "@/components/ftth/olt-detail-dialog";
 import { useState } from "react";
 import type { Olt, Pop } from "@shared/schema";
 import { useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function OltsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [editingOlt, setEditingOlt] = useState<Olt | null>(null);
   const [viewingOlt, setViewingOlt] = useState<Olt | null>(null);
+  const [syncingOltId, setSyncingOltId] = useState<number | null>(null);
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: olts, isLoading } = useQuery<Olt[]>({
     queryKey: ['/api/olts'],
@@ -33,6 +38,29 @@ export default function OltsPage() {
 
   const { data: onuCounts } = useQuery<Record<number, number>>({
     queryKey: ['/api/olts/stats/onu-counts'],
+  });
+
+  const syncOnusMutation = useMutation({
+    mutationFn: async (oltId: number) => {
+      return await apiRequest("POST", `/api/olts/${oltId}/discover-onus`, undefined);
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/onus'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/olts/stats/onu-counts'] });
+      toast({
+        title: "ONU Discovery Complete",
+        description: data.message,
+      });
+      setSyncingOltId(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Discovery Failed",
+        description: error.message || "Failed to discover ONUs from OLT",
+        variant: "destructive",
+      });
+      setSyncingOltId(null);
+    },
   });
 
   const handleAdd = () => {
@@ -83,6 +111,19 @@ export default function OltsPage() {
 
   const handleViewOnus = (oltId: number) => {
     setLocation(`/ftth/onus?oltId=${oltId}`);
+  };
+
+  const handleSyncOnus = (olt: Olt) => {
+    if (!olt.telnetEnabled) {
+      toast({
+        title: "Telnet Disabled",
+        description: "Telnet must be enabled on this OLT to discover ONUs",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSyncingOltId(olt.id);
+    syncOnusMutation.mutate(olt.id);
   };
 
   if (isLoading) {
@@ -185,6 +226,16 @@ export default function OltsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSyncOnus(olt)}
+                        disabled={!olt.telnetEnabled || syncingOltId === olt.id}
+                        data-testid={`button-sync-onus-${olt.id}`}
+                      >
+                        <RefreshCw className={`h-4 w-4 mr-2 ${syncingOltId === olt.id ? 'animate-spin' : ''}`} />
+                        Sync ONUs
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

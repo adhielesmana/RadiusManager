@@ -1160,6 +1160,11 @@ export class DatabaseStorage implements IStorage {
     return onu || undefined;
   }
 
+  async getOnuBySerial(ponSerial: string): Promise<Onu | undefined> {
+    const [onu] = await db.select().from(onus).where(eq(onus.ponSerial, ponSerial));
+    return onu || undefined;
+  }
+
   async getOltOnus(oltId: number): Promise<Onu[]> {
     return await db.select().from(onus).where(eq(onus.oltId, oltId)).orderBy(onus.ponPort, onus.onuId);
   }

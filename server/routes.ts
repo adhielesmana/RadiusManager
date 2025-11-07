@@ -6,6 +6,7 @@ import { db } from "./db";
 import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { oltService } from "./olt-service";
 
 // Hardcoded superadmin credentials
 const SUPERADMIN = {
@@ -833,6 +834,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const onuCounts = await storage.getOnuCountsByOlt();
       res.json(onuCounts);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/olts/:id/discover-onus", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const olt = await storage.getOlt(id);
+      
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found" });
+      }
+
+      const discoveredOnus = await oltService.discoverOnus(olt);
+      
+      let created = 0;
+      let updated = 0;
+      const errors: string[] = [];
+
+      for (const discoveredOnu of discoveredOnus) {
+        try {
+          const existingOnu = await storage.getOnuBySerial(discoveredOnu.ponSerial);
+          
+          if (existingOnu) {
+            await storage.updateOnu(existingOnu.id, {
+              ponPort: discoveredOnu.ponPort,
+              onuId: discoveredOnu.onuId ?? undefined,
+              macAddress: discoveredOnu.macAddress ?? undefined,
+              signalRx: discoveredOnu.signalRx?.toString() ?? undefined,
+              signalTx: discoveredOnu.signalTx?.toString() ?? undefined,
+              status: discoveredOnu.status,
+            });
+            updated++;
+          } else {
+            if (!discoveredOnu.ponSerial.startsWith('UNKNOWN_')) {
+              await storage.createOnu({
+                oltId: olt.id,
+                ponSerial: discoveredOnu.ponSerial,
+                ponPort: discoveredOnu.ponPort,
+                onuId: discoveredOnu.onuId ?? undefined,
+                macAddress: discoveredOnu.macAddress ?? undefined,
+                signalRx: discoveredOnu.signalRx?.toString() ?? undefined,
+                signalTx: discoveredOnu.signalTx?.toString() ?? undefined,
+                status: discoveredOnu.status,
+                subscriptionId: undefined,
+                distributionBoxId: undefined,
+              });
+              created++;
+            }
+          }
+        } catch (error: any) {
+          errors.push(`Error processing ONU ${discoveredOnu.ponSerial}: ${error.message}`);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `Discovery complete: ${created} ONUs created, ${updated} ONUs updated`,
+        discovered: discoveredOnus.length,
+        created,
+        updated,
+        errors: errors.length > 0 ? errors : undefined,
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
