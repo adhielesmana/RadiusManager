@@ -1097,6 +1097,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/onus/:id/detail-info", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const onu = await storage.getOnu(id);
+      
+      if (!onu) {
+        return res.status(404).json({ error: "ONU not found" });
+      }
+
+      const olt = await storage.getOlt(onu.oltId);
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found for this ONU" });
+      }
+
+      if (!onu.onuId) {
+        return res.status(400).json({ error: "ONU ID is required for detailed info" });
+      }
+
+      const detailInfo = await oltService.getOnuDetailInfo(olt, onu.ponPort, onu.onuId);
+      res.json(detailInfo);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Discovery Manager Endpoints - Admin only
   app.post("/api/discovery/start/:oltId", requireAdmin, async (req, res) => {
     try {

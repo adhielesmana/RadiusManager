@@ -660,6 +660,128 @@ export class OltService {
     return null;
   }
 
+  async getOnuDetailInfo(olt: Olt, ponPort: string, onuId: number): Promise<any> {
+    const vendor = olt.vendor.toLowerCase();
+    
+    if (!vendor.includes('zte')) {
+      throw new Error(`Detailed ONU info only supported for ZTE OLTs (vendor: ${olt.vendor})`);
+    }
+
+    if (!olt.telnetEnabled) {
+      throw new Error(`Telnet is not enabled for OLT: ${olt.name}`);
+    }
+
+    const connection = await this.connectTelnet(olt);
+
+    try {
+      const command = `show gpon onu detail-info gpon-onu_${ponPort}:${onuId}`;
+      console.log(`[OLT Service] Getting detailed info: ${command}`);
+      
+      const output = await this.execZteCommand(connection, command);
+      
+      const details: any = {
+        ponPort,
+        onuId,
+        rawOutput: output,
+      };
+
+      const lines = output.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        
+        if (trimmed.includes('Name:')) {
+          const match = trimmed.match(/Name:\s*(.+)/);
+          if (match) details.name = match[1].trim();
+        }
+        if (trimmed.includes('Type:')) {
+          const match = trimmed.match(/Type:\s*(.+)/);
+          if (match) details.type = match[1].trim();
+        }
+        if (trimmed.includes('Description:')) {
+          const match = trimmed.match(/Description:\s*(.+)/);
+          if (match) details.description = match[1].trim();
+        }
+        if (trimmed.includes('SN:')) {
+          const match = trimmed.match(/SN:\s*([A-Z0-9]+)/);
+          if (match) details.serialNumber = match[1].trim();
+        }
+        if (trimmed.includes('Password:')) {
+          const match = trimmed.match(/Password:\s*(.+)/);
+          if (match) details.password = match[1].trim();
+        }
+        if (trimmed.includes('Status:')) {
+          const match = trimmed.match(/Status:\s*(.+)/);
+          if (match) details.status = match[1].trim();
+        }
+        if (trimmed.includes('Phase state:')) {
+          const match = trimmed.match(/Phase state:\s*(.+)/);
+          if (match) details.phaseState = match[1].trim();
+        }
+        if (trimmed.includes('Config state:')) {
+          const match = trimmed.match(/Config state:\s*(.+)/);
+          if (match) details.configState = match[1].trim();
+        }
+        if (trimmed.includes('Distance(m):')) {
+          const match = trimmed.match(/Distance\(m\):\s*(\d+)/);
+          if (match) details.distance = parseInt(match[1]);
+        }
+        if (trimmed.includes('Rx optical power(dBm):')) {
+          const match = trimmed.match(/Rx optical power\(dBm\):\s*([-\d.]+)/);
+          if (match) details.rxPower = parseFloat(match[1]);
+        }
+        if (trimmed.includes('Tx optical power(dBm):')) {
+          const match = trimmed.match(/Tx optical power\(dBm\):\s*([-\d.]+)/);
+          if (match) details.txPower = parseFloat(match[1]);
+        }
+        if (trimmed.includes('OLT Rx optical power(dBm):')) {
+          const match = trimmed.match(/OLT Rx optical power\(dBm\):\s*([-\d.]+)/);
+          if (match) details.oltRxPower = parseFloat(match[1]);
+        }
+        if (trimmed.includes('ONU Rx optical power(dBm):')) {
+          const match = trimmed.match(/ONU Rx optical power\(dBm\):\s*([-\d.]+)/);
+          if (match) details.onuRxPower = parseFloat(match[1]);
+        }
+        if (trimmed.includes('Voltage(V):')) {
+          const match = trimmed.match(/Voltage\(V\):\s*([\d.]+)/);
+          if (match) details.voltage = parseFloat(match[1]);
+        }
+        if (trimmed.includes('Current(mA):')) {
+          const match = trimmed.match(/Current\(mA\):\s*([\d.]+)/);
+          if (match) details.current = parseFloat(match[1]);
+        }
+        if (trimmed.includes('Temperature(C):')) {
+          const match = trimmed.match(/Temperature\(C\):\s*([-\d.]+)/);
+          if (match) details.temperature = parseFloat(match[1]);
+        }
+        if (trimmed.includes('Last down cause:')) {
+          const match = trimmed.match(/Last down cause:\s*(.+)/);
+          if (match) details.lastDownCause = match[1].trim();
+        }
+        if (trimmed.includes('Last down time:')) {
+          const match = trimmed.match(/Last down time:\s*(.+)/);
+          if (match) details.lastDownTime = match[1].trim();
+        }
+        if (trimmed.includes('Last up time:')) {
+          const match = trimmed.match(/Last up time:\s*(.+)/);
+          if (match) details.lastUpTime = match[1].trim();
+        }
+        if (trimmed.includes('Last dying gasp time:')) {
+          const match = trimmed.match(/Last dying gasp time:\s*(.+)/);
+          if (match) details.lastDyingGaspTime = match[1].trim();
+        }
+        if (trimmed.includes('Version:')) {
+          const match = trimmed.match(/Version:\s*(.+)/);
+          if (match) details.firmwareVersion = match[1].trim();
+        }
+      }
+
+      return details;
+
+    } finally {
+      await connection.end();
+    }
+  }
+
 }
 
 export const oltService = new OltService();
