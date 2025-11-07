@@ -37,16 +37,45 @@ export class OltService {
     await connection.connect(params);
     console.log(`[Telnet] Connected successfully to ${olt.name}`);
     
-    // Try to send a simple test command to verify connection
-    try {
-      await connection.send('\n');
-      const testResponse = await connection.exec('enable');
-      console.log(`[Telnet] Enable response:`, testResponse.substring(0, 200));
-    } catch (err: any) {
-      console.warn(`[Telnet] Enable command failed (might be normal):`, err.message);
+    // HIOSO-specific authentication: access password + enable config
+    if (olt.vendor.toLowerCase().includes('hioso')) {
+      console.log(`[Telnet] HIOSO detected - performing additional authentication steps`);
+      
+      // Step 1: Enter access password
+      try {
+        console.log(`[Telnet] Sending access password...`);
+        await connection.send('admin\n');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`[Telnet] Access password sent`);
+      } catch (err: any) {
+        console.warn(`[Telnet] Access password step warning:`, err.message);
+      }
+      
+      // Step 2: Enter enable mode
+      try {
+        console.log(`[Telnet] Entering enable mode...`);
+        await connection.send('enable\n');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`[Telnet] Enable command sent, sending password...`);
+        await connection.send('admin\n');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`[Telnet] Enable password sent`);
+      } catch (err: any) {
+        console.warn(`[Telnet] Enable mode warning:`, err.message);
+      }
+      
+      // Step 3: Enter config mode
+      try {
+        console.log(`[Telnet] Entering config mode...`);
+        await connection.send('config\n');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`[Telnet] Config mode entered`);
+      } catch (err: any) {
+        console.warn(`[Telnet] Config mode warning:`, err.message);
+      }
     }
     
-    // Try show version
+    // Test command to verify we're authenticated properly
     try {
       const versionResponse = await connection.exec('show version');
       console.log(`[Telnet] Version response (${versionResponse.length} chars):`, versionResponse.substring(0, 200));
