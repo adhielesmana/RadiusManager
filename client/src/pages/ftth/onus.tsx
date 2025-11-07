@@ -434,7 +434,7 @@ export default function OnusPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm whitespace-nowrap">
                       {onu.signalRx ? (
-                        <span className={onu.signalRx < -28 ? 'text-destructive' : ''}>
+                        <span className={parseFloat(String(onu.signalRx)) < -28 ? 'text-destructive' : ''}>
                           {onu.signalRx}
                         </span>
                       ) : (
@@ -443,7 +443,7 @@ export default function OnusPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm whitespace-nowrap">
                       {onu.signalTx ? (
-                        <span className={onu.signalTx < -28 ? 'text-destructive' : ''}>
+                        <span className={parseFloat(String(onu.signalTx)) < -28 ? 'text-destructive' : ''}>
                           {onu.signalTx}
                         </span>
                       ) : (

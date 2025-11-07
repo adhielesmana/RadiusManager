@@ -1122,6 +1122,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/onus/:id/fetch-details", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const onu = await storage.getOnu(id);
+      
+      if (!onu) {
+        return res.status(404).json({ error: "ONU not found" });
+      }
+
+      const olt = await storage.getOlt(onu.oltId);
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found for this ONU" });
+      }
+
+      if (!onu.onuId) {
+        return res.status(400).json({ error: "ONU ID is required for detailed info" });
+      }
+
+      // Fetch detailed info from OLT
+      const detailInfo = await oltService.getOnuDetailInfo(olt, onu.ponPort, onu.onuId);
+      
+      // Update ONU with detailed information
+      const updateData: any = {
+        detailsRawOutput: detailInfo.rawOutput,
+      };
+
+      // Map detail fields to database columns
+      if (detailInfo.name) updateData.onuName = detailInfo.name;
+      if (detailInfo.deviceType) updateData.deviceType = detailInfo.deviceType;
+      if (detailInfo.state) updateData.state = detailInfo.state;
+      if (detailInfo.adminState) updateData.adminState = detailInfo.adminState;
+      if (detailInfo.phaseState) updateData.phaseState = detailInfo.phaseState;
+      if (detailInfo.configState) updateData.configState = detailInfo.configState;
+      if (detailInfo.authenticationMode) updateData.authenticationMode = detailInfo.authenticationMode;
+      if (detailInfo.snBind) updateData.snBind = detailInfo.snBind;
+      if (detailInfo.password) updateData.onuPassword = detailInfo.password;
+      if (detailInfo.vportMode) updateData.vportMode = detailInfo.vportMode;
+      if (detailInfo.dbaMode) updateData.dbaMode = detailInfo.dbaMode;
+      if (detailInfo.onuStatus) updateData.onuStatusDetail = detailInfo.onuStatus;
+      if (detailInfo.fec) updateData.fec = detailInfo.fec;
+      if (detailInfo.onlineDuration) updateData.onlineDuration = detailInfo.onlineDuration;
+      if (detailInfo.lastAuthpassTime) updateData.lastAuthpassTime = new Date(detailInfo.lastAuthpassTime);
+      if (detailInfo.lastOfflineTime) updateData.lastOfflineTime = new Date(detailInfo.lastOfflineTime);
+      if (detailInfo.lastDownCause) updateData.lastDownCause = detailInfo.lastDownCause;
+      if (detailInfo.currentChannel) updateData.currentChannel = detailInfo.currentChannel;
+      if (detailInfo.lineProfile) updateData.lineProfile = detailInfo.lineProfile;
+      if (detailInfo.serviceProfile) updateData.serviceProfile = detailInfo.serviceProfile;
+      if (detailInfo.distance) updateData.distance = detailInfo.distance;
+      if (detailInfo.description) updateData.description = detailInfo.description;
+
+      const updatedOnu = await storage.updateOnu(id, updateData);
+      res.json(updatedOnu);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/olts/:id/pull-all-onus-details", requireAdmin, async (req, res) => {
     try {
       const oltId = parseInt(req.params.id);
