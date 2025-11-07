@@ -247,8 +247,29 @@ class DiscoveryManager {
       if (detailInfo.onuStatus) updateData.onuStatusDetail = detailInfo.onuStatus;
       if (detailInfo.fec) updateData.fec = detailInfo.fec;
       if (detailInfo.onlineDuration) updateData.onlineDuration = detailInfo.onlineDuration;
-      if (detailInfo.lastAuthpassTime) updateData.lastAuthpassTime = new Date(detailInfo.lastAuthpassTime);
-      if (detailInfo.lastOfflineTime) updateData.lastOfflineTime = new Date(detailInfo.lastOfflineTime);
+      
+      if (detailInfo.lastAuthpassTime) {
+        try {
+          const authDate = new Date(detailInfo.lastAuthpassTime);
+          if (!isNaN(authDate.getTime())) {
+            updateData.lastAuthpassTime = authDate;
+          }
+        } catch (err) {
+          console.log(`[DetailWorker] Invalid lastAuthpassTime: ${detailInfo.lastAuthpassTime}`);
+        }
+      }
+      
+      if (detailInfo.lastOfflineTime) {
+        try {
+          const offlineDate = new Date(detailInfo.lastOfflineTime);
+          if (!isNaN(offlineDate.getTime())) {
+            updateData.lastOfflineTime = offlineDate;
+          }
+        } catch (err) {
+          console.log(`[DetailWorker] Invalid lastOfflineTime: ${detailInfo.lastOfflineTime}`);
+        }
+      }
+      
       if (detailInfo.lastDownCause) updateData.lastDownCause = detailInfo.lastDownCause;
       if (detailInfo.currentChannel) updateData.currentChannel = detailInfo.currentChannel;
       if (detailInfo.lineProfile) updateData.lineProfile = detailInfo.lineProfile;

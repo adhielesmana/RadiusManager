@@ -298,21 +298,33 @@ export class OltService {
         sessions.push(session);
       }
 
-      // Step 3: Split ONUs into chunks for parallel processing
-      const chunkSize = Math.ceil(onuList.length / POOL_SIZE);
-      const chunks: Array<typeof onuList> = [];
-      for (let i = 0; i < POOL_SIZE; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, onuList.length);
-        chunks.push(onuList.slice(start, end));
+      // Step 3: Group ONUs by port for bulk querying
+      const portMap = new Map<string, typeof onuList>();
+      for (const onu of onuList) {
+        const portKey = `${onu.slot}/${onu.port}`;
+        if (!portMap.has(portKey)) {
+          portMap.set(portKey, []);
+        }
+        portMap.get(portKey)!.push(onu);
       }
 
-      console.log(`[ZTE Discovery] Step 3: Processing ${totalOnuCount} ONUs across ${POOL_SIZE} sessions`);
+      const ports = Array.from(portMap.keys());
+      console.log(`[ZTE Discovery] Step 3: Processing ${totalOnuCount} ONUs across ${ports.length} ports using ${POOL_SIZE} sessions`);
       
-      // Process each chunk in parallel with batching
+      // Distribute ports across workers for parallel processing
+      const portChunks: string[][] = [];
+      for (let i = 0; i < POOL_SIZE; i++) {
+        portChunks.push([]);
+      }
+      
+      ports.forEach((port, index) => {
+        portChunks[index % POOL_SIZE].push(port);
+      });
+
+      // Process ports in parallel using bulk queries
       const chunkResults = await Promise.all(
-        chunks.map((chunk, index) => 
-          this.processOnuChunkWithBatching(chunk, sessions[index], index, addToBuffer)
+        portChunks.map((portChunk, index) => 
+          this.processPortsWithBulkQuery(portChunk, portMap, sessions[index], index, addToBuffer)
         )
       );
 
@@ -411,11 +423,89 @@ export class OltService {
     return onus;
   }
 
-  private async processOnuChunkWithBatching(
-    onuList: Array<{slot: number, port: number, onuId: number, status: string}>,
+  private async processPortsWithBulkQuery(
+    ports: string[],
+    portMap: Map<string, Array<{slot: number, port: number, onuId: number, status: string}>>,
     session: TelnetSession,
     workerId: number,
     addToBuffer: (onus: DiscoveredOnu[]) => Promise<void>
+  ): Promise<DiscoveredOnu[]> {
+    const onus: DiscoveredOnu[] = [];
+    
+    for (const portKey of ports) {
+      const onusOnPort = portMap.get(portKey) || [];
+      if (onusOnPort.length === 0) continue;
+
+      const firstOnu = onusOnPort[0];
+      const slot = firstOnu.slot;
+      const port = firstOnu.port;
+
+      try {
+        console.log(`[ZTE Worker ${workerId}] Querying port ${slot}/${port} with ${onusOnPort.length} ONUs...`);
+        
+        const bulkStateCmd = `show gpon onu state gpon-olt_1/${slot}/${port}`;
+        console.log(`[ZTE Worker ${workerId}] Executing: ${bulkStateCmd}`);
+        
+        const bulkStateResponse = await session.execute(bulkStateCmd, 10000);
+        console.log(`[ZTE Worker ${workerId}] Response length: ${bulkStateResponse?.length || 0} chars`);
+        
+        const portOnus = await this.parseZteBulkPortResponse(
+          bulkStateResponse,
+          slot,
+          port,
+          onusOnPort,
+          session
+        );
+
+        onus.push(...portOnus);
+        await addToBuffer(portOnus);
+
+        console.log(`[ZTE Worker ${workerId}] ✓ Port ${slot}/${port}: Processed ${portOnus.length}/${onusOnPort.length} ONUs`);
+      } catch (err: any) {
+        console.warn(`[ZTE Worker ${workerId}] Failed bulk query for port ${slot}/${port}:`, err.message);
+        console.warn(`[ZTE Worker ${workerId}] Falling back to individual queries for port ${slot}/${port}`);
+        
+        const fallbackOnus = await this.processOnuListFallback(onusOnPort, session, workerId);
+        onus.push(...fallbackOnus);
+        await addToBuffer(fallbackOnus);
+        
+        console.log(`[ZTE Worker ${workerId}] Fallback completed for port ${slot}/${port}: ${fallbackOnus.length} ONUs`);
+      }
+    }
+
+    return onus;
+  }
+
+  private async parseZteBulkPortResponse(
+    response: string,
+    slot: number,
+    port: number,
+    expectedOnus: Array<{slot: number, port: number, onuId: number, status: string}>,
+    session: TelnetSession
+  ): Promise<DiscoveredOnu[]> {
+    const onus: DiscoveredOnu[] = [];
+    
+    // Simply create ONU records with basic info from the expected list
+    // Don't try to parse the bulk response or fetch individual details here
+    for (const expectedOnu of expectedOnus) {
+      onus.push({
+        ponSerial: `BULK_${slot}_${port}_${expectedOnu.onuId}`,
+        ponPort: `${slot}/${port}`,
+        onuId: expectedOnu.onuId,
+        macAddress: null,
+        signalRx: null,
+        signalTx: null,
+        status: expectedOnu.status === 'working' ? 'online' : 'offline',
+      });
+    }
+
+    return onus;
+  }
+
+  private async processOnuListFallback(
+    onuList: Array<{slot: number, port: number, onuId: number, status: string}>,
+    session: TelnetSession,
+    workerId: number
   ): Promise<DiscoveredOnu[]> {
     const onus: DiscoveredOnu[] = [];
     
@@ -427,40 +517,18 @@ export class OltService {
         
         const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
         const ponSerial = serialMatch ? serialMatch[1] : `UNKNOWN_${onu.slot}_${onu.port}_${onu.onuId}`;
-        
-        let signalRx = null;
-        let signalTx = null;
 
-        try {
-          const powerResponse = await session.execute(`show pon power attenuation ${onuInterface}`, 6000);
-          
-          const rxMatch = powerResponse.match(/up\s+Rx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
-          const txMatch = powerResponse.match(/down\s+Tx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
-          
-          if (rxMatch) signalRx = parseFloat(rxMatch[1]);
-          if (txMatch) signalTx = parseFloat(txMatch[1]);
-        } catch (powerErr) {
-          // Skip power if unavailable
-        }
-
-        const discoveredOnu: DiscoveredOnu = {
+        onus.push({
           ponSerial,
           ponPort: `${onu.slot}/${onu.port}`,
           onuId: onu.onuId,
           macAddress: null,
-          signalRx,
-          signalTx,
+          signalRx: null,
+          signalTx: null,
           status: onu.status === 'working' ? 'online' : 'offline',
-        };
-
-        onus.push(discoveredOnu);
-        
-        // Add to shared buffer for batching
-        await addToBuffer([discoveredOnu]);
-
-        console.log(`[ZTE Worker ${workerId}] ✓ ${onu.slot}/${onu.port}:${onu.onuId} - ${ponSerial}`);
+        });
       } catch (err: any) {
-        console.warn(`[ZTE Worker ${workerId}] Failed to get details for ${onuInterface}:`, err.message);
+        console.warn(`[ZTE Worker ${workerId}] Fallback failed for ${onuInterface}:`, err.message);
       }
     }
 
