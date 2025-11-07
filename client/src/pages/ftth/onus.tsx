@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { OnuDialog } from "@/components/ftth/onu-dialog";
 import { OnuDetailDialog } from "@/components/ftth/onu-detail-dialog";
 import { useState, useMemo } from "react";
-import type { Onu, DistributionBox, Olt } from "@shared/schema";
+import type { Onu, DistributionBox, Olt, Subscription, Customer } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -53,6 +53,14 @@ export default function OnusPage() {
 
   const { data: olts } = useQuery<Olt[]>({
     queryKey: ['/api/olts'],
+  });
+
+  const { data: subscriptions } = useQuery<Subscription[]>({
+    queryKey: ['/api/subscriptions'],
+  });
+
+  const { data: customers } = useQuery<Customer[]>({
+    queryKey: ['/api/customers'],
   });
 
   const deleteMutation = useMutation({
@@ -145,6 +153,14 @@ export default function OnusPage() {
     setLocation('/ftth/onus');
   };
 
+  const getCustomerInfo = (subscriptionId: number | null) => {
+    if (!subscriptionId) return null;
+    const subscription = subscriptions?.find(s => s.id === subscriptionId);
+    if (!subscription) return null;
+    const customer = customers?.find(c => c.id === subscription.customerId);
+    return customer ? { name: customer.fullName, subscriptionId: subscription.subscriptionId } : null;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -194,6 +210,7 @@ export default function OnusPage() {
             <TableHead>PON Port</TableHead>
             <TableHead>ONU ID</TableHead>
             <TableHead>Distribution Box</TableHead>
+            <TableHead>Customer</TableHead>
             <TableHead>MAC Address</TableHead>
             <TableHead>Signal RX</TableHead>
             <TableHead>Signal TX</TableHead>
@@ -204,7 +221,7 @@ export default function OnusPage() {
         <TableBody>
             {!filteredOnus || filteredOnus.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   {filterOltId 
                     ? `No ONUs found for ${getOltName(filterOltId)}.`
                     : 'No ONUs found. Add your first ONU to get started.'}
@@ -213,6 +230,7 @@ export default function OnusPage() {
             ) : (
               filteredOnus.map((onu) => {
                 const boxInfo = getBoxInfo(onu.distributionBoxId);
+                const customerInfo = getCustomerInfo(onu.subscriptionId);
                 return (
                   <TableRow key={onu.id} data-testid={`row-onu-${onu.id}`}>
                     <TableCell className="font-mono text-sm font-medium">
@@ -234,6 +252,20 @@ export default function OnusPage() {
                           <div className="text-xs text-muted-foreground">{boxInfo.name}</div>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {customerInfo ? (
+                        <div className="text-sm">
+                          <div className="font-medium">{customerInfo.name}</div>
+                          <div className="text-xs text-muted-foreground font-mono">
+                            {customerInfo.subscriptionId}
+                          </div>
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">
+                          Unbound
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {onu.macAddress || <span className="text-muted-foreground">N/A</span>}

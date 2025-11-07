@@ -388,13 +388,13 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Get next sequence number for this date and company
-    const [result] = await db.execute<{ seq: number }>(sql`
+    const queryResult = await db.execute<{ seq: number }>(sql`
       SELECT COALESCE(MAX(CAST(SUBSTRING(subscription_id FROM 8 FOR 4) AS INTEGER)), 0) + 1 AS seq
       FROM subscriptions
       WHERE subscription_id LIKE ${datePrefix + companyGroup.code}||'%'
     `);
     
-    const sequence = result?.seq || 1;
+    const sequence = queryResult.rows[0]?.seq || 1;
     const sequenceStr = sequence.toString().padStart(4, '0');
     
     return `${datePrefix}${companyGroup.code}${sequenceStr}`;
