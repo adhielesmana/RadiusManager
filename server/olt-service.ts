@@ -79,18 +79,10 @@ export class OltService {
     await connection.connect(params);
     console.log(`[Telnet] Connected successfully to ${olt.name}`);
     
-    // ZTE-specific authentication: enter configuration mode with "conf t"
+    // ZTE-specific: Stay in exec mode (do NOT enter config mode)
+    // ZTE C320 show commands work in privileged exec mode, not config mode
     if (olt.vendor.toLowerCase().includes('zte')) {
-      console.log(`[Telnet] ZTE detected - entering configuration mode`);
-      
-      try {
-        console.log(`[Telnet] Sending "conf t" command...`);
-        await connection.send('conf t\n');
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        console.log(`[Telnet] Configuration mode entered successfully`);
-      } catch (err: any) {
-        console.warn(`[Telnet] Configuration mode warning:`, err.message);
-      }
+      console.log(`[Telnet] ZTE detected - staying in privileged exec mode for show commands`);
     }
     
     // HIOSO-specific authentication: access password + enable config
@@ -171,13 +163,10 @@ export class OltService {
     const errors: string[] = [];
 
     try {
-      if (olt.enablePassword) {
-        await connection.send('enable');
-        await connection.send(olt.enablePassword);
-      }
-
-      const totalSlots = olt.totalPonSlots || 16;
+      const totalSlots = olt.totalPonSlots || 2;
       const portsPerSlot = olt.portsPerSlot || 16;
+
+      console.log(`[ZTE Discovery] Scanning ${totalSlots} slots x ${portsPerSlot} ports`);
 
       for (let slot = 1; slot <= totalSlots; slot++) {
         for (let port = 1; port <= portsPerSlot; port++) {
@@ -186,17 +175,28 @@ export class OltService {
           
           try {
             const response = await connection.exec(command);
-            const discovered = await this.parseZteOnuResponse(response, `1/${slot}/${port}`, connection, olt);
-            onus.push(...discovered);
+            
+            if (!response || response.trim().length === 0) {
+              continue;
+            }
+
+            const discovered = await this.parseZteOnuResponse(response, slot, port, connection);
+            if (discovered.length > 0) {
+              console.log(`[ZTE Discovery] Found ${discovered.length} ONUs on port ${slot}/${port}`);
+              onus.push(...discovered);
+            }
           } catch (err: any) {
-            errors.push(`Port ${ponPort}: ${err.message}`);
+            if (!err.message.includes('socket not writable')) {
+              errors.push(`Port ${ponPort}: ${err.message}`);
+            }
             continue;
           }
         }
       }
 
+      console.log(`[ZTE Discovery] Total ONUs found: ${onus.length}`);
       if (errors.length > 0) {
-        console.warn(`ZTE OLT ${olt.name} discovery warnings:`, errors.slice(0, 5));
+        console.warn(`[ZTE Discovery] Warnings:`, errors.slice(0, 10));
       }
     } finally {
       connection.end();
@@ -205,44 +205,56 @@ export class OltService {
     return onus;
   }
 
-  private async parseZteOnuResponse(response: string, ponPort: string, connection: Telnet, olt: Olt): Promise<DiscoveredOnu[]> {
+  private async parseZteOnuResponse(response: string, slot: number, port: number, connection: Telnet): Promise<DiscoveredOnu[]> {
     const onus: DiscoveredOnu[] = [];
     const lines = response.split('\n');
     
     for (const line of lines) {
-      if (line.includes('gpon-onu_')) {
-        const match = line.match(/gpon-onu_\d+\/\d+\/\d+:(\d+)/);
-        if (match) {
-          const onuId = parseInt(match[1]);
-          const statusMatch = line.match(/(enable|disable|working|lost|offline|online)/i);
-          const status = statusMatch ? statusMatch[1].toLowerCase() : 'unknown';
+      const onuMatch = line.match(/gpon-onu_1\/(\d+)\/(\d+):(\d+)/);
+      if (onuMatch) {
+        const onuId = parseInt(onuMatch[3]);
+        const phaseMatch = line.match(/\s+(working|LOS|offline|online)\s*$/i);
+        const status = phaseMatch ? phaseMatch[1].toLowerCase() : 'unknown';
+        
+        let ponSerial = '';
+        let macAddress = null;
+        let signalRx = null;
+        let signalTx = null;
+
+        try {
+          const onuInterface = `gpon-onu_1/${slot}/${port}:${onuId}`;
           
-          let ponSerial = `UNKNOWN_${ponPort}_${onuId}`;
-          let macAddress = null;
-          let signalRx = null;
-          let signalTx = null;
-
-          try {
-            const onuInterface = `gpon-onu_${ponPort}:${onuId}`;
-            const detailCmd = `show gpon remote-onu interface ${onuInterface}`;
-            const detailResponse = await connection.exec(detailCmd);
-            
-            const serialMatch = detailResponse.match(/SN\s*:\s*([A-Z0-9]+)/i);
-            const macMatch = detailResponse.match(/MAC\s*:\s*([0-9a-f]{2}[:-]){5}[0-9a-f]{2}/i);
-            const rxMatch = detailResponse.match(/Rx\s*[Pp]ower\s*:\s*([-+]?\d+\.?\d*)/);
-            const txMatch = detailResponse.match(/Tx\s*[Pp]ower\s*:\s*([-+]?\d+\.?\d*)/);
-
-            if (serialMatch) ponSerial = serialMatch[1];
-            if (macMatch) macAddress = macMatch[0].split(':')[1].trim().replace(/-/g, ':').toUpperCase();
-            if (rxMatch) signalRx = parseFloat(rxMatch[1]);
-            if (txMatch) signalTx = parseFloat(txMatch[1]);
-          } catch (detailErr) {
-            console.warn(`Could not fetch details for ONU ${ponPort}:${onuId}`);
+          const detailCmd = `show gpon onu detail-info ${onuInterface}`;
+          const detailResponse = await connection.exec(detailCmd);
+          
+          const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
+          if (serialMatch) {
+            ponSerial = serialMatch[1];
           }
+
+          const equipCmd = `show gpon remote-onu equip ${onuInterface}`;
+          const equipResponse = await connection.exec(equipCmd);
+          const snMatch = equipResponse.match(/SN\s*:\s*([A-Z0-9]+)/i);
+          if (snMatch && !ponSerial) {
+            ponSerial = snMatch[1];
+          }
+
+          const powerCmd = `show pon power attenuation ${onuInterface}`;
+          const powerResponse = await connection.exec(powerCmd);
+          const rxMatch = powerResponse.match(/up\s+Rx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
+          const txMatch = powerResponse.match(/down\s+Tx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
           
+          if (rxMatch) signalRx = parseFloat(rxMatch[1]);
+          if (txMatch) signalTx = parseFloat(txMatch[1]);
+
+        } catch (detailErr: any) {
+          console.warn(`[ZTE] Could not fetch details for ONU ${slot}/${port}:${onuId}:`, detailErr.message);
+        }
+
+        if (ponSerial) {
           onus.push({
             ponSerial,
-            ponPort,
+            ponPort: `${slot}/${port}`,
             onuId,
             macAddress,
             signalRx,
