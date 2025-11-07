@@ -155,6 +155,14 @@ export default function OnusPage() {
     }
   };
 
+  const getCustomerInfo = (subscriptionId: number | null) => {
+    if (!subscriptionId) return null;
+    const subscription = subscriptions?.find(s => s.id === subscriptionId);
+    if (!subscription) return null;
+    const customer = customers?.find(c => c.id === subscription.customerId);
+    return customer ? { name: customer.fullName, subscriptionId: subscription.subscriptionId } : null;
+  };
+
   const viewingOltName = viewingOnu ? getOltName(viewingOnu.oltId) : undefined;
   const viewingBoxName = viewingOnu ? getBoxInfo(viewingOnu.distributionBoxId).code : undefined;
 
@@ -249,14 +257,6 @@ export default function OnusPage() {
 
   const clearFilter = () => {
     setLocation('/ftth/onus');
-  };
-
-  const getCustomerInfo = (subscriptionId: number | null) => {
-    if (!subscriptionId) return null;
-    const subscription = subscriptions?.find(s => s.id === subscriptionId);
-    if (!subscription) return null;
-    const customer = customers?.find(c => c.id === subscription.customerId);
-    return customer ? { name: customer.fullName, subscriptionId: subscription.subscriptionId } : null;
   };
 
   if (isLoading) {
@@ -433,10 +433,22 @@ export default function OnusPage() {
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-sm whitespace-nowrap">
-                      {onu.signalRx ? `${onu.signalRx} dBm` : <span className="text-muted-foreground">N/A</span>}
+                      {onu.signalRx ? (
+                        <span className={onu.signalRx < -28 ? 'text-destructive' : ''}>
+                          {onu.signalRx}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">N/A</span>
+                      )}
                     </TableCell>
                     <TableCell className="font-mono text-sm whitespace-nowrap">
-                      {onu.signalTx ? `${onu.signalTx} dBm` : <span className="text-muted-foreground">N/A</span>}
+                      {onu.signalTx ? (
+                        <span className={onu.signalTx < -28 ? 'text-destructive' : ''}>
+                          {onu.signalTx}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">N/A</span>
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <Badge variant={getStatusColor(onu.status)}>
