@@ -222,51 +222,51 @@ export class OltService {
     const errors: string[] = [];
 
     try {
-      const totalPorts = (olt.totalPonSlots || 1) * (olt.portsPerSlot || 8);
-      console.log(`[HIOSO Discovery] OLT: ${olt.name}, Scanning ${totalPorts} PON ports`);
+      const totalSlots = olt.totalPonSlots || 1;
+      const portsPerSlot = olt.portsPerSlot || 4;
+      const maxOnusPerPort = 128;
+      
+      console.log(`[HIOSO Discovery] OLT: ${olt.name}, Scanning ${totalSlots} slots x ${portsPerSlot} ports`);
 
-      // Try different command variations for HIOSO
-      const commandVariations = [
-        (port: number) => `show onu state epon 0/${port}`,
-        (port: number) => `show running-config epon 0/${port}`,
-        (port: number) => `show onu-information epon 0/${port}`,
-        (port: number) => `show epon onu-information interface epon 0/${port}`,
-        (port: number) => `show epon onu-information epon 0/${port}`,
-        (port: number) => `show onu running config epon 0/${port}`,
-        (port: number) => `show epon interface epon 0/${port}`,
-        (port: number) => `epon onu-information interface 0/${port}`,
-        (port: number) => `show interface epon 0/${port}`,
-      ];
-
-      for (let port = 1; port <= totalPorts; port++) {
-        const ponPort = `0/${port}`;
-        let foundOnus = false;
-
-        for (const cmdFunc of commandVariations) {
-          const command = cmdFunc(port);
+      for (let slot = 1; slot <= totalSlots; slot++) {
+        for (let port = 1; port <= portsPerSlot; port++) {
+          const ponPort = `${slot}/${port}`;
           
           try {
-            console.log(`[HIOSO] Trying command: ${command}`);
-            const response = await connection.exec(command);
-            console.log(`[HIOSO] Port ${ponPort} response (${response.length} chars):`, response.substring(0, 300));
+            console.log(`[HIOSO] Entering pon${ponPort}...`);
+            await connection.send(`pon${ponPort}\n`);
+            await new Promise(resolve => setTimeout(resolve, 500));
             
-            if (response.length > 0 && !response.includes('Invalid') && !response.includes('Error')) {
-              const discovered = await this.parseHiosoOnuResponse(response, ponPort, connection);
-              console.log(`[HIOSO] Port ${ponPort} found ${discovered.length} ONUs with this command`);
-              if (discovered.length > 0) {
-                onus.push(...discovered);
-                foundOnus = true;
-                break; // Found working command, move to next port
+            for (let onuId = 1; onuId <= maxOnusPerPort; onuId++) {
+              try {
+                const command = `show onu ${onuId}`;
+                const response = await connection.exec(command);
+                
+                if (response && !response.toLowerCase().includes('invalid') && 
+                    !response.toLowerCase().includes('not found') &&
+                    !response.toLowerCase().includes('error')) {
+                  
+                  const discovered = this.parseHiosoOnuResponse(response, ponPort, onuId);
+                  if (discovered) {
+                    onus.push(discovered);
+                    console.log(`[HIOSO] Found ONU on ${ponPort}:${onuId}`);
+                  }
+                } else if (onuId === 1) {
+                  break;
+                }
+              } catch (err: any) {
+                if (onuId > 10) break;
+                continue;
               }
             }
+            
+            await connection.send('exit\n');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
           } catch (err: any) {
-            console.error(`[HIOSO] Port ${ponPort} command "${command}" error:`, err.message);
-            continue; // Try next command variation
+            errors.push(`Port pon${ponPort}: ${err.message}`);
+            continue;
           }
-        }
-
-        if (!foundOnus) {
-          errors.push(`Port ${ponPort}: No working command found`);
         }
       }
 
@@ -274,9 +274,6 @@ export class OltService {
       if (errors.length > 0) {
         console.warn(`HIOSO OLT ${olt.name} discovery warnings:`, errors.slice(0, 10));
       }
-    } catch (topErr: any) {
-      console.error(`[HIOSO Discovery] Fatal error for OLT ${olt.name}:`, topErr.message);
-      throw topErr;
     } finally {
       connection.end();
     }
@@ -284,52 +281,58 @@ export class OltService {
     return onus;
   }
 
-  private async parseHiosoOnuResponse(response: string, ponPort: string, connection: Telnet): Promise<DiscoveredOnu[]> {
-    const onus: DiscoveredOnu[] = [];
+  private parseHiosoOnuResponse(response: string, ponPort: string, onuId: number): DiscoveredOnu | null {
+    // Parse the response from "show onu {onuId}" command
     const lines = response.split('\n');
     
+    let macAddress: string | null = null;
+    let ponSerial: string | null = null;
+    let status = 'unknown';
+    let signalRx: number | null = null;
+    let signalTx: number | null = null;
+
     for (const line of lines) {
+      // Look for MAC address
       const macMatch = line.match(/([0-9a-f]{2}[:-]){5}[0-9a-f]{2}/i);
-      const onuIdMatch = line.match(/\d+\/\d+:(\d+)/);
-      const statusMatch = line.match(/(online|offline|silent|registered)/i);
-
-      if (macMatch || onuIdMatch) {
-        let macAddress = macMatch ? macMatch[0].replace(/-/g, ':').toUpperCase() : null;
-        const onuId = onuIdMatch ? parseInt(onuIdMatch[1]) : null;
-        const status = statusMatch ? statusMatch[1].toLowerCase() : 'unknown';
-        let signalRx = null;
-        let signalTx = null;
-
-        if (onuId && !macAddress) {
-          try {
-            const detailCmd = `show epon interface epon ${ponPort}:${onuId} onu basic-info`;
-            const detailResponse = await connection.exec(detailCmd);
-            
-            const detailMacMatch = detailResponse.match(/MAC\s*[Aa]ddress\s*:\s*([0-9a-f]{2}[:-]){5}[0-9a-f]{2}/i);
-            const rxMatch = detailResponse.match(/Rx\s*[Pp]ower\s*:\s*([-+]?\d+\.?\d*)/);
-            const txMatch = detailResponse.match(/Tx\s*[Pp]ower\s*:\s*([-+]?\d+\.?\d*)/);
-
-            if (detailMacMatch) macAddress = detailMacMatch[0].split(':')[1].trim().replace(/-/g, ':').toUpperCase();
-            if (rxMatch) signalRx = parseFloat(rxMatch[1]);
-            if (txMatch) signalTx = parseFloat(txMatch[1]);
-          } catch (detailErr) {
-            console.warn(`Could not fetch details for ONU ${ponPort}:${onuId}`);
-          }
-        }
-
-        onus.push({
-          ponSerial: macAddress || `UNKNOWN_${ponPort}_${onuId}`,
-          ponPort,
-          onuId,
-          macAddress,
-          signalRx,
-          signalTx,
-          status: status === 'online' || status === 'registered' ? 'online' : 'offline',
-        });
+      if (macMatch) {
+        macAddress = macMatch[0].replace(/-/g, ':').toUpperCase();
       }
+      
+      // Look for serial number
+      const serialMatch = line.match(/Serial\s*[Nn]umber\s*:\s*([A-Z0-9]+)/i) || 
+                          line.match(/SN\s*:\s*([A-Z0-9]+)/i);
+      if (serialMatch) {
+        ponSerial = serialMatch[1];
+      }
+      
+      // Look for status
+      const statusMatch = line.match(/(online|offline|silent|registered|active|working)/i);
+      if (statusMatch) {
+        status = statusMatch[1].toLowerCase();
+      }
+      
+      // Look for signal strength
+      const rxMatch = line.match(/Rx\s*[Pp]ower\s*:\s*([-+]?\d+\.?\d*)/);
+      if (rxMatch) signalRx = parseFloat(rxMatch[1]);
+      
+      const txMatch = line.match(/Tx\s*[Pp]ower\s*:\s*([-+]?\d+\.?\d*)/);
+      if (txMatch) signalTx = parseFloat(txMatch[1]);
     }
 
-    return onus;
+    // If we found some identifying information, create the ONU record
+    if (macAddress || ponSerial || status !== 'unknown') {
+      return {
+        ponSerial: ponSerial || macAddress || `UNKNOWN_${ponPort}_${onuId}`,
+        ponPort,
+        onuId,
+        macAddress,
+        signalRx,
+        signalTx,
+        status: status === 'online' || status === 'registered' || status === 'active' || status === 'working' ? 'online' : 'offline',
+      };
+    }
+
+    return null;
   }
 
 }
