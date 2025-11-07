@@ -94,21 +94,20 @@ export default function OltsPage() {
         </Button>
       </div>
 
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>POP Location</TableHead>
-              <TableHead>IP Address</TableHead>
-              <TableHead>PON Slots</TableHead>
-              <TableHead>Management</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Vendor</TableHead>
+            <TableHead>POP Location</TableHead>
+            <TableHead>IP Address</TableHead>
+            <TableHead>PON Slots</TableHead>
+            <TableHead>Management</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
             {!olts || olts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
@@ -183,7 +182,6 @@ export default function OltsPage() {
             )}
           </TableBody>
         </Table>
-      </div>
 
       <OltDialog
         open={dialogOpen}

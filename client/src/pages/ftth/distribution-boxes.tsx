@@ -92,22 +92,21 @@ export default function DistributionBoxesPage() {
         </Button>
       </div>
 
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>OLT</TableHead>
-              <TableHead>PON Port</TableHead>
-              <TableHead>Slot Index</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Capacity</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Code</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>OLT</TableHead>
+            <TableHead>PON Port</TableHead>
+            <TableHead>Slot Index</TableHead>
+            <TableHead>Location</TableHead>
+            <TableHead>Capacity</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
             {!distributionBoxes || distributionBoxes.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
@@ -188,7 +187,6 @@ export default function DistributionBoxesPage() {
             )}
           </TableBody>
         </Table>
-      </div>
 
       <DistributionBoxDialog
         open={dialogOpen}

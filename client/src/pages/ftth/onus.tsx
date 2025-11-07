@@ -151,23 +151,22 @@ export default function OnusPage() {
         </Button>
       </div>
 
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>PON Serial</TableHead>
-              <TableHead>OLT</TableHead>
-              <TableHead>PON Port</TableHead>
-              <TableHead>ONU ID</TableHead>
-              <TableHead>Distribution Box</TableHead>
-              <TableHead>MAC Address</TableHead>
-              <TableHead>Signal RX</TableHead>
-              <TableHead>Signal TX</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>PON Serial</TableHead>
+            <TableHead>OLT</TableHead>
+            <TableHead>PON Port</TableHead>
+            <TableHead>ONU ID</TableHead>
+            <TableHead>Distribution Box</TableHead>
+            <TableHead>MAC Address</TableHead>
+            <TableHead>Signal RX</TableHead>
+            <TableHead>Signal TX</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
             {!onus || onus.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
@@ -247,7 +246,6 @@ export default function OnusPage() {
             )}
           </TableBody>
         </Table>
-      </div>
 
       <OnuDialog
         open={dialogOpen}
