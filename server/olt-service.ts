@@ -228,8 +228,9 @@ export class OltService {
     olt: Olt,
     onBatch?: (onus: DiscoveredOnu[], progress: { discovered: number, total: number }) => Promise<void>
   ): Promise<DiscoveredOnu[]> {
-    const POOL_SIZE = 2; // Create 2 Telnet sessions for parallel processing
-    const BATCH_SIZE = 10; // Save every 10 ONUs
+    const POOL_SIZE = 8; // Create 8 Telnet sessions for parallel processing (optimized for 1000+ ONUs)
+    const BATCH_SIZE = 20; // Save every 20 ONUs
+    const SERIAL_BATCH_SIZE = 10; // Fetch serials in batches of 10 per port
     const sessions: TelnetSession[] = [];
     const onus: DiscoveredOnu[] = [];
 
@@ -441,6 +442,7 @@ export class OltService {
       const port = firstOnu.port;
 
       try {
+        const portStartTime = Date.now();
         console.log(`[ZTE Worker ${workerId}] Querying port ${slot}/${port} with ${onusOnPort.length} ONUs...`);
         
         const bulkStateCmd = `show gpon onu state gpon-olt_1/${slot}/${port}`;
@@ -449,6 +451,7 @@ export class OltService {
         const bulkStateResponse = await session.execute(bulkStateCmd, 10000);
         console.log(`[ZTE Worker ${workerId}] Response length: ${bulkStateResponse?.length || 0} chars`);
         
+        const serialFetchStartTime = Date.now();
         const portOnus = await this.parseZteBulkPortResponse(
           bulkStateResponse,
           slot,
@@ -456,11 +459,14 @@ export class OltService {
           onusOnPort,
           session
         );
+        const serialFetchDuration = ((Date.now() - serialFetchStartTime) / 1000).toFixed(2);
 
         onus.push(...portOnus);
         await addToBuffer(portOnus);
 
-        console.log(`[ZTE Worker ${workerId}] ✓ Port ${slot}/${port}: Processed ${portOnus.length}/${onusOnPort.length} ONUs`);
+        const portDuration = ((Date.now() - portStartTime) / 1000).toFixed(2);
+        const onuPerSec = (portOnus.length / parseFloat(portDuration)).toFixed(1);
+        console.log(`[ZTE Worker ${workerId}] ✓ Port ${slot}/${port}: ${portOnus.length}/${onusOnPort.length} ONUs in ${portDuration}s (${onuPerSec} ONU/s, serial fetch: ${serialFetchDuration}s)`);
       } catch (err: any) {
         console.warn(`[ZTE Worker ${workerId}] Failed bulk query for port ${slot}/${port}:`, err.message);
         console.warn(`[ZTE Worker ${workerId}] Falling back to individual queries for port ${slot}/${port}`);
@@ -484,30 +490,45 @@ export class OltService {
     session: TelnetSession
   ): Promise<DiscoveredOnu[]> {
     const onus: DiscoveredOnu[] = [];
+    const PARALLEL_LIMIT = 5; // Fetch up to 5 serial numbers in parallel per session
     
-    // Fetch serial numbers individually for each ONU on this port
-    // This is still faster than the old approach since we're querying by port group
-    for (const expectedOnu of expectedOnus) {
-      const onuInterface = `gpon-onu_1/${slot}/${port}:${expectedOnu.onuId}`;
-      
-      try {
-        const detailResponse = await session.execute(`show gpon onu detail-info ${onuInterface}`, 5000);
+    // Import p-limit for concurrency control
+    const pLimit = (await import('p-limit')).default;
+    const limit = pLimit(PARALLEL_LIMIT);
+    
+    // Process ONUs in parallel batches
+    const fetchPromises = expectedOnus.map(expectedOnu => 
+      limit(async () => {
+        const onuInterface = `gpon-onu_1/${slot}/${port}:${expectedOnu.onuId}`;
         
-        const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
-        const ponSerial = serialMatch ? serialMatch[1] : `UNKNOWN_${slot}_${port}_${expectedOnu.onuId}`;
+        try {
+          const detailResponse = await session.execute(`show gpon onu detail-info ${onuInterface}`, 5000);
+          
+          const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
+          const ponSerial = serialMatch ? serialMatch[1] : `UNKNOWN_${slot}_${port}_${expectedOnu.onuId}`;
 
-        onus.push({
-          ponSerial,
-          ponPort: `${slot}/${port}`,
-          onuId: expectedOnu.onuId,
-          macAddress: null,
-          signalRx: null,
-          signalTx: null,
-          status: expectedOnu.status === 'working' ? 'online' : 'offline',
-        });
-      } catch (err: any) {
-        console.warn(`[ZTE Bulk] Failed to get serial for ${onuInterface}:`, err.message);
-        // Skip this ONU if we can't get its serial
+          return {
+            ponSerial,
+            ponPort: `${slot}/${port}`,
+            onuId: expectedOnu.onuId,
+            macAddress: null,
+            signalRx: null,
+            signalTx: null,
+            status: expectedOnu.status === 'working' ? 'online' : 'offline',
+          };
+        } catch (err: any) {
+          console.warn(`[ZTE Bulk] Failed to get serial for ${onuInterface}:`, err.message);
+          return null; // Skip this ONU if we can't get its serial
+        }
+      })
+    );
+    
+    const results = await Promise.all(fetchPromises);
+    
+    // Filter out null results (failed fetches)
+    for (const result of results) {
+      if (result) {
+        onus.push(result);
       }
     }
 
