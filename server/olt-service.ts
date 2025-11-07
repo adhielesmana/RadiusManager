@@ -64,14 +64,14 @@ export class OltService {
         console.warn(`[Telnet] Enable mode warning:`, err.message);
       }
       
-      // Step 3: Enter config mode
+      // Step 3: Enter configure terminal mode
       try {
-        console.log(`[Telnet] Entering config mode...`);
-        await connection.send('config\n');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        console.log(`[Telnet] Config mode entered`);
+        console.log(`[Telnet] Entering configure terminal mode...`);
+        await connection.send('configure terminal\n');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`[Telnet] Configure terminal mode entered`);
       } catch (err: any) {
-        console.warn(`[Telnet] Config mode warning:`, err.message);
+        console.warn(`[Telnet] Configure terminal mode warning:`, err.message);
       }
     }
     
