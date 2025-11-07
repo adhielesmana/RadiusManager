@@ -170,8 +170,8 @@ export default function OnusPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="py-6 space-y-6">
+      <div className="flex items-center justify-between px-6">
         <div>
           <h1 className="text-2xl font-semibold" data-testid="text-page-title">
             ONUs (Optical Network Units)
@@ -208,6 +208,7 @@ export default function OnusPage() {
             <TableHead>PON Serial</TableHead>
             <TableHead>OLT</TableHead>
             <TableHead>PON Port</TableHead>
+            <TableHead>ODC</TableHead>
             <TableHead>ONU ID</TableHead>
             <TableHead>Distribution Box</TableHead>
             <TableHead>Customer</TableHead>
@@ -220,7 +221,7 @@ export default function OnusPage() {
         <TableBody>
             {!filteredOnus || filteredOnus.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   {filterOltId 
                     ? `No ONUs found for ${getOltName(filterOltId)}.`
                     : 'No ONUs found. Add your first ONU to get started.'}
@@ -232,52 +233,57 @@ export default function OnusPage() {
                 const customerInfo = getCustomerInfo(onu.subscriptionId);
                 return (
                   <TableRow key={onu.id} data-testid={`row-onu-${onu.id}`}>
-                    <TableCell className="font-mono text-sm font-medium">
+                    <TableCell className="font-mono text-sm font-medium whitespace-nowrap">
                       {onu.ponSerial}
                     </TableCell>
-                    <TableCell className="text-sm">{getOltName(onu.oltId)}</TableCell>
-                    <TableCell className="font-mono text-xs">{onu.ponPort}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">{getOltName(onu.oltId)}</TableCell>
+                    <TableCell className="font-mono text-xs whitespace-nowrap">{onu.ponPort}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {(onu as any).odcNumber ? (
+                        <Badge variant="outline" className="font-mono">
+                          ODC {(onu as any).odcNumber}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {onu.onuId ? (
                         <Badge variant="secondary">ID {onu.onuId}</Badge>
                       ) : (
                         <span className="text-muted-foreground text-xs">N/A</span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">{boxInfo.code}</div>
-                        {boxInfo.name && (
-                          <div className="text-xs text-muted-foreground">{boxInfo.name}</div>
-                        )}
-                      </div>
+                    <TableCell className="text-sm whitespace-nowrap">
+                      <span className="font-medium">{boxInfo.code}</span>
+                      {boxInfo.name && (
+                        <span className="text-xs text-muted-foreground ml-1">({boxInfo.name})</span>
+                      )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {customerInfo ? (
-                        <div className="text-sm">
-                          <div className="font-medium">{customerInfo.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono">
-                            {customerInfo.subscriptionId}
-                          </div>
-                        </div>
+                        <span className="text-sm">
+                          <span className="font-medium">{customerInfo.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono ml-1">({customerInfo.subscriptionId})</span>
+                        </span>
                       ) : (
                         <Badge variant="outline" className="text-xs">
                           Unbound
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="font-mono text-sm">
+                    <TableCell className="font-mono text-sm whitespace-nowrap">
                       {onu.signalRx ? `${onu.signalRx} dBm` : <span className="text-muted-foreground">N/A</span>}
                     </TableCell>
-                    <TableCell className="font-mono text-sm">
+                    <TableCell className="font-mono text-sm whitespace-nowrap">
                       {onu.signalTx ? `${onu.signalTx} dBm` : <span className="text-muted-foreground">N/A</span>}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <Badge variant={getStatusColor(onu.status)}>
                         {onu.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           variant="ghost"
@@ -310,7 +316,7 @@ export default function OnusPage() {
               })
             )}
           </TableBody>
-        </Table>
+      </Table>
 
       <OnuDialog
         open={dialogOpen}

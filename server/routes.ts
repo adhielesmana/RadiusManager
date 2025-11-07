@@ -997,11 +997,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function to calculate ODC number
+  const calculateOdc = (ponPort: string, portsPerSlot: number): number | null => {
+    try {
+      const parts = ponPort.split('/');
+      if (parts.length !== 2) return null;
+      
+      const slot = parseInt(parts[0]);
+      const port = parseInt(parts[1]);
+      
+      if (isNaN(slot) || isNaN(port)) return null;
+      
+      return (slot - 1) * portsPerSlot + port;
+    } catch {
+      return null;
+    }
+  };
+
+  // Helper function to enrich ONUs with ODC numbers
+  const enrichOnusWithOdc = async (onus: any[]) => {
+    const olts = await storage.getOlts();
+    const oltMap = new Map(olts.map(olt => [olt.id, olt]));
+    
+    return onus.map(onu => {
+      const olt = oltMap.get(onu.oltId);
+      const odcNumber = olt ? calculateOdc(onu.ponPort, olt.portsPerSlot) : null;
+      return { ...onu, odcNumber };
+    });
+  };
+
   // FTTH ONU Endpoints - Admin only
   app.get("/api/onus", requireAdmin, async (_req, res) => {
     try {
       const onusList = await storage.getOnus();
-      res.json(onusList);
+      const enrichedOnus = await enrichOnusWithOdc(onusList);
+      res.json(enrichedOnus);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -1014,7 +1044,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!onu) {
         return res.status(404).json({ error: "ONU not found" });
       }
-      res.json(onu);
+      const enriched = await enrichOnusWithOdc([onu]);
+      res.json(enriched[0]);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -1024,7 +1055,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const oltId = parseInt(req.params.oltId);
       const onus = await storage.getOltOnus(oltId);
-      res.json(onus);
+      const enriched = await enrichOnusWithOdc(onus);
+      res.json(enriched);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
