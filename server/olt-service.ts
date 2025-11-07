@@ -83,6 +83,18 @@ export class OltService {
       console.warn(`[Telnet] Show version failed:`, err.message);
     }
     
+    // For HIOSO, discover available commands using "?"
+    if (olt.vendor.toLowerCase().includes('hioso')) {
+      try {
+        console.log(`[Telnet] Discovering available commands with "?"...`);
+        const helpResponse = await connection.exec('?');
+        console.log(`[Telnet] Available commands (${helpResponse.length} chars):`);
+        console.log(helpResponse);
+      } catch (err: any) {
+        console.warn(`[Telnet] Help command failed:`, err.message);
+      }
+    }
+    
     return connection;
   }
 
@@ -202,12 +214,17 @@ export class OltService {
       const totalPorts = (olt.totalPonSlots || 1) * (olt.portsPerSlot || 8);
       console.log(`[HIOSO Discovery] OLT: ${olt.name}, Scanning ${totalPorts} PON ports`);
 
-      // Try different command variations
+      // Try different command variations for HIOSO
       const commandVariations = [
+        (port: number) => `show onu state epon 0/${port}`,
+        (port: number) => `show running-config epon 0/${port}`,
+        (port: number) => `show onu-information epon 0/${port}`,
         (port: number) => `show epon onu-information interface epon 0/${port}`,
         (port: number) => `show epon onu-information epon 0/${port}`,
         (port: number) => `show onu running config epon 0/${port}`,
         (port: number) => `show epon interface epon 0/${port}`,
+        (port: number) => `epon onu-information interface 0/${port}`,
+        (port: number) => `show interface epon 0/${port}`,
       ];
 
       for (let port = 1; port <= totalPorts; port++) {
