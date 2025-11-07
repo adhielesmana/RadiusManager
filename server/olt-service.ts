@@ -230,9 +230,12 @@ export class OltService {
   ): Promise<DiscoveredOnu[]> {
     const POOL_SIZE = 8; // Create 8 Telnet sessions for parallel processing (optimized for 1000+ ONUs)
     const BATCH_SIZE = 20; // Save every 20 ONUs
-    const SERIAL_BATCH_SIZE = 10; // Fetch serials in batches of 10 per port
     const sessions: TelnetSession[] = [];
     const onus: DiscoveredOnu[] = [];
+
+    // Use OLT configuration from database
+    const SLOTS = olt.totalPonSlots || 2; // Default to 2 if not configured
+    const PORTS_PER_SLOT = olt.portsPerSlot || 16; // Default to 16 if not configured
 
     // Shared buffer for batching across workers
     const sharedBuffer: DiscoveredOnu[] = [];
@@ -252,44 +255,15 @@ export class OltService {
     };
 
     try {
-      // Step 1: Get ONU list using a temporary session
-      console.log(`[ZTE Discovery] Step 1: Getting ONU list with 'show gpon onu state'`);
-      const tempSession = new TelnetSession();
-      await this.connectTelnetSession(tempSession, olt);
-      
-      const stateResponse = await tempSession.execute('show gpon onu state', 8000);
-      await tempSession.close();
-      
-      console.log(`[ZTE Discovery] Response length: ${stateResponse?.length || 0} chars`);
-      
-      if (!stateResponse || stateResponse.length === 0) {
-        console.log(`[ZTE Discovery] No ONUs found (empty response)`);
-        return onus;
-      }
-
-      console.log(`[ZTE Discovery] First 300 chars:`, stateResponse.substring(0, 300));
-
-      const onuList: Array<{slot: number, port: number, onuId: number, status: string}> = [];
-      const lines = stateResponse.split('\n');
-      
-      for (const line of lines) {
-        const match = line.match(/(\d+)\/(\d+)\/(\d+):(\d+)\s+(\w+)\s+(\w+)\s+(\w+)/);
-        if (match) {
-          const slot = parseInt(match[2]);
-          const port = parseInt(match[3]);
-          const onuId = parseInt(match[4]);
-          const phaseState = match[7];
-          
-          onuList.push({ slot, port, onuId, status: phaseState.toLowerCase() });
+      // Step 1: Generate all ports to scan based on OLT configuration from database
+      const portsToScan: Array<{slot: number, port: number}> = [];
+      for (let slot = 1; slot <= SLOTS; slot++) {
+        for (let port = 1; port <= PORTS_PER_SLOT; port++) {
+          portsToScan.push({ slot, port });
         }
       }
 
-      totalOnuCount = onuList.length;
-      console.log(`[ZTE Discovery] Found ${totalOnuCount} ONUs in state list`);
-
-      if (onuList.length === 0) {
-        return onus;
-      }
+      console.log(`[ZTE Discovery] OLT: ${olt.name}, Scanning ${SLOTS} slots × ${PORTS_PER_SLOT} ports = ${portsToScan.length} total ports`);
 
       // Step 2: Create connection pool
       console.log(`[ZTE Discovery] Step 2: Creating pool of ${POOL_SIZE} Telnet sessions`);
@@ -299,33 +273,24 @@ export class OltService {
         sessions.push(session);
       }
 
-      // Step 3: Group ONUs by port for bulk querying
-      const portMap = new Map<string, typeof onuList>();
-      for (const onu of onuList) {
-        const portKey = `${onu.slot}/${onu.port}`;
-        if (!portMap.has(portKey)) {
-          portMap.set(portKey, []);
-        }
-        portMap.get(portKey)!.push(onu);
-      }
-
-      const ports = Array.from(portMap.keys());
-      console.log(`[ZTE Discovery] Step 3: Processing ${totalOnuCount} ONUs across ${ports.length} ports using ${POOL_SIZE} sessions`);
+      // Step 3: Distribute ports across workers for parallel processing
+      console.log(`[ZTE Discovery] Step 3: Processing ${portsToScan.length} ports using ${POOL_SIZE} sessions`);
       
-      // Distribute ports across workers for parallel processing
-      const portChunks: string[][] = [];
+      const portChunks: Array<{slot: number, port: number}>[] = [];
       for (let i = 0; i < POOL_SIZE; i++) {
         portChunks.push([]);
       }
       
-      ports.forEach((port, index) => {
-        portChunks[index % POOL_SIZE].push(port);
+      portsToScan.forEach((portInfo, index) => {
+        portChunks[index % POOL_SIZE].push(portInfo);
       });
 
-      // Process ports in parallel using bulk queries
+      // Process ports in parallel - each worker queries its assigned ports directly
       const chunkResults = await Promise.all(
         portChunks.map((portChunk, index) => 
-          this.processPortsWithBulkQuery(portChunk, portMap, sessions[index], index, addToBuffer)
+          this.processPortsDirectQuery(portChunk, sessions[index], index, addToBuffer, (count) => {
+            totalOnuCount += count;
+          })
         )
       );
 
@@ -418,6 +383,80 @@ export class OltService {
         console.log(`[ZTE Worker ${workerId}] ✓ ${onu.slot}/${onu.port}:${onu.onuId} - ${ponSerial}`);
       } catch (err: any) {
         console.warn(`[ZTE Worker ${workerId}] Failed to get details for ${onuInterface}:`, err.message);
+      }
+    }
+
+    return onus;
+  }
+
+  private async processPortsDirectQuery(
+    ports: Array<{slot: number, port: number}>,
+    session: TelnetSession,
+    workerId: number,
+    addToBuffer: (onus: DiscoveredOnu[]) => Promise<void>,
+    onOnuCountDiscovered: (count: number) => void
+  ): Promise<DiscoveredOnu[]> {
+    const onus: DiscoveredOnu[] = [];
+    
+    for (const portInfo of ports) {
+      const { slot, port } = portInfo;
+
+      try {
+        const portStartTime = Date.now();
+        
+        // Query this specific port for ONUs
+        const bulkStateCmd = `show gpon onu state gpon-olt_1/${slot}/${port}`;
+        console.log(`[ZTE Worker ${workerId}] Querying port ${slot}/${port}...`);
+        
+        const bulkStateResponse = await session.execute(bulkStateCmd, 10000);
+        
+        // Parse the response to get the list of ONUs on this port
+        const onuList: Array<{slot: number, port: number, onuId: number, status: string}> = [];
+        const lines = bulkStateResponse.split('\n');
+        
+        for (const line of lines) {
+          // Format: 1/1/1:1     enable       enable      working      1(GPON)
+          const match = line.match(/(\d+)\/(\d+)\/(\d+):(\d+)\s+(\w+)\s+(\w+)\s+(\w+)/);
+          if (match) {
+            const parsedSlot = parseInt(match[2]);
+            const parsedPort = parseInt(match[3]);
+            const onuId = parseInt(match[4]);
+            const phaseState = match[7];
+            
+            // Only include ONUs from this specific port
+            if (parsedSlot === slot && parsedPort === port) {
+              onuList.push({ slot: parsedSlot, port: parsedPort, onuId, status: phaseState.toLowerCase() });
+            }
+          }
+        }
+
+        if (onuList.length === 0) {
+          console.log(`[ZTE Worker ${workerId}] Port ${slot}/${port}: No ONUs found`);
+          continue;
+        }
+
+        console.log(`[ZTE Worker ${workerId}] Port ${slot}/${port}: Found ${onuList.length} ONUs`);
+        onOnuCountDiscovered(onuList.length);
+        
+        // Fetch serial numbers for all ONUs on this port
+        const serialFetchStartTime = Date.now();
+        const portOnus = await this.parseZteBulkPortResponse(
+          bulkStateResponse,
+          slot,
+          port,
+          onuList,
+          session
+        );
+        const serialFetchDuration = ((Date.now() - serialFetchStartTime) / 1000).toFixed(2);
+
+        onus.push(...portOnus);
+        await addToBuffer(portOnus);
+
+        const portDuration = ((Date.now() - portStartTime) / 1000).toFixed(2);
+        const onuPerSec = (portOnus.length / parseFloat(portDuration)).toFixed(1);
+        console.log(`[ZTE Worker ${workerId}] ✓ Port ${slot}/${port}: ${portOnus.length} ONUs in ${portDuration}s (${onuPerSec} ONU/s)`);
+      } catch (err: any) {
+        console.warn(`[ZTE Worker ${workerId}] Failed to query port ${slot}/${port}:`, err.message);
       }
     }
 
