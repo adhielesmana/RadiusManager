@@ -445,6 +445,9 @@ class DiscoveryManager {
         try {
           console.log(`[DiscoveryManager] Starting discovery for OLT ${olt.id} (${olt.name})`);
           await this.startDiscovery(olt.id);
+          
+          console.log(`[DiscoveryManager] Enqueuing existing ONUs without details for OLT ${olt.id}`);
+          await this.enqueueExistingOnusWithoutDetails(olt.id);
         } catch (error: any) {
           console.error(`[DiscoveryManager] Failed to start discovery for OLT ${olt.id} (${olt.name}):`, error.message);
           
@@ -471,6 +474,29 @@ class DiscoveryManager {
       console.log('[DiscoveryManager] Discovery initialization complete');
     } catch (error: any) {
       console.error('[DiscoveryManager] Error during initialization:', error.message);
+    }
+  }
+
+  private async enqueueExistingOnusWithoutDetails(oltId: number): Promise<void> {
+    try {
+      const onusWithoutDetails = await db.query.onus.findMany({
+        where: (table, { eq, and, isNull }) => and(
+          eq(table.oltId, oltId),
+          isNull(table.onuName)
+        ),
+      });
+
+      console.log(`[DiscoveryManager] Found ${onusWithoutDetails.length} ONUs without details for OLT ${oltId}`);
+
+      for (const onu of onusWithoutDetails) {
+        if (onu.onuId) {
+          this.enqueueDetailFetch(oltId, onu.ponSerial);
+        }
+      }
+
+      console.log(`[DiscoveryManager] Enqueued ${onusWithoutDetails.filter(o => o.onuId).length} ONUs for detail enrichment`);
+    } catch (error: any) {
+      console.error(`[DiscoveryManager] Error enqueuing existing ONUs: ${error.message}`);
     }
   }
 

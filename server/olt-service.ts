@@ -554,32 +554,40 @@ export class OltService {
             await connection.send(`pon${ponPort}\n`);
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            console.log(`[HIOSO] Querying ONUs on port ${ponPort}...`);
-            for (let onuId = 1; onuId <= maxOnusPerPort; onuId++) {
+            console.log(`[HIOSO] Querying ONU brief list on port ${ponPort}...`);
+            const briefResponse = await connection.exec('show onu brief');
+            console.log(`[HIOSO] Brief response length: ${briefResponse.length} chars`);
+            console.log(`[HIOSO] Raw brief response for ${ponPort}:\n${briefResponse}`);
+            console.log(`[HIOSO] ========== END RAW RESPONSE ==========`);
+            
+            const activeOnuIds = this.parseHiosoBriefResponse(briefResponse, ponPort);
+            console.log(`[HIOSO] Found ${activeOnuIds.length} active ONUs on port ${ponPort}`);
+            
+            for (const { onuId, ponSerial, status } of activeOnuIds) {
               try {
-                const command = `show onu ${onuId}`;
+                const command = `show onu detail ${ponPort} ${onuId}`;
                 console.log(`[HIOSO] Executing: ${command}`);
                 const response = await connection.exec(command);
-                console.log(`[HIOSO] Response for ${ponPort}:${onuId} (${response.length} chars):`, response.substring(0, 200));
+                console.log(`[HIOSO] Detail response for ${ponPort}:${onuId} (${response.length} chars)`);
                 
-                if (response && !response.toLowerCase().includes('invalid') && 
-                    !response.toLowerCase().includes('not found') &&
-                    !response.toLowerCase().includes('error') &&
-                    response.trim().length > 0) {
-                  
-                  const discovered = this.parseHiosoOnuResponse(response, ponPort, onuId);
-                  if (discovered) {
-                    onus.push(discovered);
-                    console.log(`[HIOSO] ✓ Found ONU on ${ponPort}:${onuId} - MAC: ${discovered.macAddress || 'N/A'}, Status: ${discovered.status}`);
-                  }
-                } else {
-                  console.log(`[HIOSO] No valid ONU at ${ponPort}:${onuId}, stopping port scan`);
-                  if (onuId === 1) break;
+                const discovered = this.parseHiosoOnuDetailResponse(response, ponPort, onuId, ponSerial, status);
+                if (discovered) {
+                  onus.push(discovered);
+                  console.log(`[HIOSO] ✓ Found ONU on ${ponPort}:${onuId} - MAC: ${discovered.macAddress || 'N/A'}, SN: ${discovered.ponSerial}, Status: ${discovered.status}`);
                 }
               } catch (err: any) {
-                console.log(`[HIOSO] Error querying ${ponPort}:${onuId}: ${err.message}`);
-                if (onuId > 10) break;
-                continue;
+                console.log(`[HIOSO] Error querying details for ${ponPort}:${onuId}: ${err.message}`);
+                const fallbackOnu: DiscoveredOnu = {
+                  ponSerial,
+                  ponPort,
+                  onuId,
+                  macAddress: null,
+                  signalRx: null,
+                  signalTx: null,
+                  status: status === 'online' || status === 'working' ? 'online' : 'offline',
+                };
+                onus.push(fallbackOnu);
+                console.log(`[HIOSO] Added ONU ${ponPort}:${onuId} with basic info (SN: ${ponSerial})`);
               }
             }
             
@@ -606,37 +614,60 @@ export class OltService {
     return onus;
   }
 
-  private parseHiosoOnuResponse(response: string, ponPort: string, onuId: number): DiscoveredOnu | null {
-    // Parse the response from "show onu {onuId}" command
+  private parseHiosoBriefResponse(response: string, ponPort: string): Array<{ onuId: number; ponSerial: string; status: string }> {
+    const onus: Array<{ onuId: number; ponSerial: string; status: string }> = [];
+    const lines = response.split('\n');
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('-') || trimmed.toLowerCase().includes('onu') && trimmed.toLowerCase().includes('id')) {
+        continue;
+      }
+      
+      const parts = trimmed.split(/\s+/);
+      if (parts.length >= 3) {
+        const onuIdMatch = parts[0].match(/(\d+)/);
+        if (onuIdMatch) {
+          const onuId = parseInt(onuIdMatch[1]);
+          const status = parts.find(p => p.toLowerCase().match(/online|offline|working|active/i)) || 'unknown';
+          const serialMatch = line.match(/([A-Z0-9]{8,16})/);
+          const ponSerial = serialMatch ? serialMatch[1] : `EPON_${ponPort.replace('/', '_')}_${onuId}`;
+          
+          if (onuId >= 1 && onuId <= 128) {
+            onus.push({ onuId, ponSerial, status: status.toLowerCase() });
+          }
+        }
+      }
+    }
+    
+    return onus;
+  }
+
+  private parseHiosoOnuDetailResponse(
+    response: string,
+    ponPort: string,
+    onuId: number,
+    ponSerial: string,
+    basicStatus: string
+  ): DiscoveredOnu | null {
     const lines = response.split('\n');
     
     let macAddress: string | null = null;
-    let ponSerial: string | null = null;
-    let status = 'unknown';
+    let status = basicStatus;
     let signalRx: number | null = null;
     let signalTx: number | null = null;
 
     for (const line of lines) {
-      // Look for MAC address
       const macMatch = line.match(/([0-9a-f]{2}[:-]){5}[0-9a-f]{2}/i);
       if (macMatch) {
         macAddress = macMatch[0].replace(/-/g, ':').toUpperCase();
       }
       
-      // Look for serial number
-      const serialMatch = line.match(/Serial\s*[Nn]umber\s*:\s*([A-Z0-9]+)/i) || 
-                          line.match(/SN\s*:\s*([A-Z0-9]+)/i);
-      if (serialMatch) {
-        ponSerial = serialMatch[1];
-      }
-      
-      // Look for status
       const statusMatch = line.match(/(online|offline|silent|registered|active|working)/i);
       if (statusMatch) {
         status = statusMatch[1].toLowerCase();
       }
       
-      // Look for signal strength
       const rxMatch = line.match(/Rx\s*[Pp]ower\s*:\s*([-+]?\d+\.?\d*)/);
       if (rxMatch) signalRx = parseFloat(rxMatch[1]);
       
@@ -644,20 +675,15 @@ export class OltService {
       if (txMatch) signalTx = parseFloat(txMatch[1]);
     }
 
-    // If we found some identifying information, create the ONU record
-    if (macAddress || ponSerial || status !== 'unknown') {
-      return {
-        ponSerial: ponSerial || macAddress || `UNKNOWN_${ponPort}_${onuId}`,
-        ponPort,
-        onuId,
-        macAddress,
-        signalRx,
-        signalTx,
-        status: status === 'online' || status === 'registered' || status === 'active' || status === 'working' ? 'online' : 'offline',
-      };
-    }
-
-    return null;
+    return {
+      ponSerial,
+      ponPort,
+      onuId,
+      macAddress,
+      signalRx,
+      signalTx,
+      status: status === 'online' || status === 'registered' || status === 'active' || status === 'working' ? 'online' : 'offline',
+    };
   }
 
   async getOnuDetailInfo(olt: Olt, ponPort: string, onuId: number): Promise<any> {
