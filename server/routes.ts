@@ -1122,6 +1122,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/olts/:id/pull-all-onus-details", requireAdmin, async (req, res) => {
+    try {
+      const oltId = parseInt(req.params.id);
+      const olt = await storage.getOlt(oltId);
+      
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found" });
+      }
+
+      const onuList = await db.query.onus.findMany({
+        where: (table, { eq }) => eq(table.oltId, oltId)
+      });
+      console.log(`[Pull Details] Found ${onuList.length} ONUs for OLT ${olt.name}`);
+
+      const onusWithDetails = [];
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const onu of onuList) {
+        try {
+          if (!onu.onuId) {
+            console.log(`[Pull Details] Skipping ONU ${onu.ponSerial} - no ONU ID`);
+            onusWithDetails.push({
+              ...onu,
+              detailInfo: null,
+              detailError: 'No ONU ID available'
+            });
+            continue;
+          }
+
+          console.log(`[Pull Details] Fetching details for ONU ${onu.ponSerial} (${onu.ponPort}:${onu.onuId})`);
+          const detailInfo = await oltService.getOnuDetailInfo(olt, onu.ponPort, onu.onuId);
+          
+          onusWithDetails.push({
+            ...onu,
+            detailInfo
+          });
+          successCount++;
+          
+          console.log(`[Pull Details] Success ${successCount}/${onuList.length}: ${onu.ponSerial}`);
+        } catch (error: any) {
+          console.error(`[Pull Details] Error fetching details for ONU ${onu.ponSerial}:`, error.message);
+          onusWithDetails.push({
+            ...onu,
+            detailInfo: null,
+            detailError: error.message
+          });
+          errorCount++;
+        }
+      }
+
+      console.log(`[Pull Details] Completed: ${successCount} success, ${errorCount} errors, ${onuList.length} total`);
+
+      res.json({
+        success: true,
+        oltId,
+        oltName: olt.name,
+        totalOnus: onuList.length,
+        successCount,
+        errorCount,
+        onus: onusWithDetails
+      });
+    } catch (error: any) {
+      console.error('[Pull Details] Fatal error:', error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Discovery Manager Endpoints - Admin only
   app.post("/api/discovery/start/:oltId", requireAdmin, async (req, res) => {
     try {
