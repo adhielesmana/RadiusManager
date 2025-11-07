@@ -73,6 +73,16 @@ export class OltService {
       } catch (err: any) {
         console.warn(`[Telnet] Configure terminal mode warning:`, err.message);
       }
+      
+      // Step 4: Enter EPON mode
+      try {
+        console.log(`[Telnet] Entering EPON mode...`);
+        await connection.send('epon\n');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`[Telnet] EPON mode entered`);
+      } catch (err: any) {
+        console.warn(`[Telnet] EPON mode warning:`, err.message);
+      }
     }
     
     // Test command to verify we're authenticated properly
