@@ -689,32 +689,63 @@ export class OltService {
       };
 
       const lines = output.split('\n');
+      
+      // Parse event history table for last authpass/offline times
+      let inEventTable = false;
+      let lastValidAuthpass: string | null = null;
+      let lastValidOffline: string | null = null;
+      let lastValidCause: string | null = null;
+      
       for (const line of lines) {
         const trimmed = line.trim();
         
+        // Detect event history table
+        if (trimmed.includes('Authpass Time') && trimmed.includes('OfflineTime')) {
+          inEventTable = true;
+          continue;
+        }
+        
+        // Parse event table rows
+        if (inEventTable) {
+          // Match: "1   2007-01-05 07:28:17    2007-01-08 21:32:09     DyingGasp"
+          const eventMatch = trimmed.match(/^\d+\s+([\d\-:\s]+)\s+([\d\-:\s]+)\s+(.*)$/);
+          if (eventMatch) {
+            const authTime = eventMatch[1].trim();
+            const offTime = eventMatch[2].trim();
+            const cause = eventMatch[3].trim();
+            
+            // Only store non-zero timestamps
+            if (authTime && !authTime.startsWith('0000-00-00')) {
+              lastValidAuthpass = authTime;
+            }
+            if (offTime && !offTime.startsWith('0000-00-00')) {
+              lastValidOffline = offTime;
+              if (cause) lastValidCause = cause;
+            }
+          }
+          
+          // Exit table when we see empty line or next section
+          if (!trimmed || trimmed.startsWith('C320-') || trimmed.startsWith('#')) {
+            inEventTable = false;
+          }
+        }
+        
+        // Parse all ONU detail fields
         if (trimmed.includes('Name:')) {
           const match = trimmed.match(/Name:\s*(.+)/);
           if (match) details.name = match[1].trim();
         }
         if (trimmed.includes('Type:')) {
           const match = trimmed.match(/Type:\s*(.+)/);
-          if (match) details.type = match[1].trim();
+          if (match) details.deviceType = match[1].trim();
         }
-        if (trimmed.includes('Description:')) {
-          const match = trimmed.match(/Description:\s*(.+)/);
-          if (match) details.description = match[1].trim();
+        if (trimmed.includes('State:') && !trimmed.includes('Phase') && !trimmed.includes('Config') && !trimmed.includes('Admin')) {
+          const match = trimmed.match(/State:\s*(.+)/);
+          if (match) details.state = match[1].trim();
         }
-        if (trimmed.includes('SN:')) {
-          const match = trimmed.match(/SN:\s*([A-Z0-9]+)/);
-          if (match) details.serialNumber = match[1].trim();
-        }
-        if (trimmed.includes('Password:')) {
-          const match = trimmed.match(/Password:\s*(.+)/);
-          if (match) details.password = match[1].trim();
-        }
-        if (trimmed.includes('Status:')) {
-          const match = trimmed.match(/Status:\s*(.+)/);
-          if (match) details.status = match[1].trim();
+        if (trimmed.includes('Admin state:')) {
+          const match = trimmed.match(/Admin state:\s*(.+)/);
+          if (match) details.adminState = match[1].trim();
         }
         if (trimmed.includes('Phase state:')) {
           const match = trimmed.match(/Phase state:\s*(.+)/);
@@ -724,59 +755,69 @@ export class OltService {
           const match = trimmed.match(/Config state:\s*(.+)/);
           if (match) details.configState = match[1].trim();
         }
-        if (trimmed.includes('Distance(m):')) {
-          const match = trimmed.match(/Distance\(m\):\s*(\d+)/);
+        if (trimmed.includes('Authentication mode:')) {
+          const match = trimmed.match(/Authentication mode:\s*(.+)/);
+          if (match) details.authenticationMode = match[1].trim();
+        }
+        if (trimmed.includes('SN Bind:')) {
+          const match = trimmed.match(/SN Bind:\s*(.+)/);
+          if (match) details.snBind = match[1].trim();
+        }
+        if (trimmed.includes('Serial number:')) {
+          const match = trimmed.match(/Serial number:\s*([A-Z0-9]+)/);
+          if (match) details.serialNumber = match[1].trim();
+        }
+        if (trimmed.includes('Password:')) {
+          const match = trimmed.match(/Password:\s*(.+)/);
+          const pwd = match ? match[1].trim() : '';
+          if (pwd) details.password = pwd;
+        }
+        if (trimmed.includes('Description:')) {
+          const match = trimmed.match(/Description:\s*(.+)/);
+          if (match) details.description = match[1].trim();
+        }
+        if (trimmed.includes('Vport mode:')) {
+          const match = trimmed.match(/Vport mode:\s*(.+)/);
+          if (match) details.vportMode = match[1].trim();
+        }
+        if (trimmed.includes('DBA Mode:')) {
+          const match = trimmed.match(/DBA Mode:\s*(.+)/);
+          if (match) details.dbaMode = match[1].trim();
+        }
+        if (trimmed.includes('ONU Status:')) {
+          const match = trimmed.match(/ONU Status:\s*(.+)/);
+          if (match) details.onuStatus = match[1].trim();
+        }
+        if (trimmed.includes('ONU Distance:')) {
+          const match = trimmed.match(/ONU Distance:\s*(\d+)m?/);
           if (match) details.distance = parseInt(match[1]);
         }
-        if (trimmed.includes('Rx optical power(dBm):')) {
-          const match = trimmed.match(/Rx optical power\(dBm\):\s*([-\d.]+)/);
-          if (match) details.rxPower = parseFloat(match[1]);
+        if (trimmed.includes('Online Duration:')) {
+          const match = trimmed.match(/Online Duration:\s*(.+)/);
+          if (match) details.onlineDuration = match[1].trim();
         }
-        if (trimmed.includes('Tx optical power(dBm):')) {
-          const match = trimmed.match(/Tx optical power\(dBm\):\s*([-\d.]+)/);
-          if (match) details.txPower = parseFloat(match[1]);
+        if (trimmed.includes('FEC:') && !trimmed.includes('actual')) {
+          const match = trimmed.match(/FEC:\s*(.+)/);
+          if (match) details.fec = match[1].trim();
         }
-        if (trimmed.includes('OLT Rx optical power(dBm):')) {
-          const match = trimmed.match(/OLT Rx optical power\(dBm\):\s*([-\d.]+)/);
-          if (match) details.oltRxPower = parseFloat(match[1]);
+        if (trimmed.includes('Current channel:')) {
+          const match = trimmed.match(/Current channel:\s*(.+)/);
+          if (match) details.currentChannel = match[1].trim();
         }
-        if (trimmed.includes('ONU Rx optical power(dBm):')) {
-          const match = trimmed.match(/ONU Rx optical power\(dBm\):\s*([-\d.]+)/);
-          if (match) details.onuRxPower = parseFloat(match[1]);
+        if (trimmed.includes('Line Profile:')) {
+          const match = trimmed.match(/Line Profile:\s*(.+)/);
+          if (match) details.lineProfile = match[1].trim();
         }
-        if (trimmed.includes('Voltage(V):')) {
-          const match = trimmed.match(/Voltage\(V\):\s*([\d.]+)/);
-          if (match) details.voltage = parseFloat(match[1]);
-        }
-        if (trimmed.includes('Current(mA):')) {
-          const match = trimmed.match(/Current\(mA\):\s*([\d.]+)/);
-          if (match) details.current = parseFloat(match[1]);
-        }
-        if (trimmed.includes('Temperature(C):')) {
-          const match = trimmed.match(/Temperature\(C\):\s*([-\d.]+)/);
-          if (match) details.temperature = parseFloat(match[1]);
-        }
-        if (trimmed.includes('Last down cause:')) {
-          const match = trimmed.match(/Last down cause:\s*(.+)/);
-          if (match) details.lastDownCause = match[1].trim();
-        }
-        if (trimmed.includes('Last down time:')) {
-          const match = trimmed.match(/Last down time:\s*(.+)/);
-          if (match) details.lastDownTime = match[1].trim();
-        }
-        if (trimmed.includes('Last up time:')) {
-          const match = trimmed.match(/Last up time:\s*(.+)/);
-          if (match) details.lastUpTime = match[1].trim();
-        }
-        if (trimmed.includes('Last dying gasp time:')) {
-          const match = trimmed.match(/Last dying gasp time:\s*(.+)/);
-          if (match) details.lastDyingGaspTime = match[1].trim();
-        }
-        if (trimmed.includes('Version:')) {
-          const match = trimmed.match(/Version:\s*(.+)/);
-          if (match) details.firmwareVersion = match[1].trim();
+        if (trimmed.includes('Service Profile:')) {
+          const match = trimmed.match(/Service Profile:\s*(.+)/);
+          if (match) details.serviceProfile = match[1].trim();
         }
       }
+      
+      // Add parsed event history
+      if (lastValidAuthpass) details.lastAuthpassTime = lastValidAuthpass;
+      if (lastValidOffline) details.lastOfflineTime = lastValidOffline;
+      if (lastValidCause) details.lastDownCause = lastValidCause;
 
       return details;
 

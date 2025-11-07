@@ -312,6 +312,29 @@ export const onus = pgTable("onus", {
   registrationDate: timestamp("registration_date").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  
+  // Detailed ONU Information from 'show gpon onu detail-info' command
+  onuName: varchar("onu_name", { length: 255 }), // ONU name configured on OLT
+  deviceType: varchar("device_type", { length: 100 }), // Device manufacturer/model from OLT
+  state: varchar("state", { length: 50 }), // ready, offline, etc.
+  adminState: varchar("admin_state", { length: 20 }), // enable, disable
+  phaseState: varchar("phase_state", { length: 50 }), // working, offline, DyingGasp, etc.
+  configState: varchar("config_state", { length: 50 }), // success, failed, etc.
+  authenticationMode: varchar("authentication_mode", { length: 20 }), // sn, password, loid, etc.
+  snBind: varchar("sn_bind", { length: 100 }), // SN binding status
+  onuPassword: varchar("onu_password", { length: 100 }), // ONU authentication password
+  vportMode: varchar("vport_mode", { length: 20 }), // gemport, ethernet
+  dbaMode: varchar("dba_mode", { length: 20 }), // Hybrid, SR, NSR
+  onuStatusDetail: varchar("onu_status_detail", { length: 20 }), // enable, disable from OLT
+  fec: varchar("fec", { length: 20 }), // Forward Error Correction: none, enable
+  onlineDuration: varchar("online_duration", { length: 50 }), // e.g., "34h 25m 53s"
+  lastAuthpassTime: timestamp("last_authpass_time"), // Last authentication time
+  lastOfflineTime: timestamp("last_offline_time"), // Last offline timestamp
+  lastDownCause: varchar("last_down_cause", { length: 100 }), // DyingGasp, LOS, PowerOff, etc.
+  currentChannel: varchar("current_channel", { length: 50 }), // Current PON channel
+  lineProfile: varchar("line_profile", { length: 100 }), // Line profile name
+  serviceProfile: varchar("service_profile", { length: 100 }), // Service profile name
+  detailsRawOutput: text("details_raw_output"), // Full raw output from detail-info command for debugging
 });
 
 // Discovery Runs - Track background OLT discovery state
