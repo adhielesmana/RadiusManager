@@ -211,7 +211,6 @@ export default function OnusPage() {
             <TableHead>ONU ID</TableHead>
             <TableHead>Distribution Box</TableHead>
             <TableHead>Customer</TableHead>
-            <TableHead>MAC Address</TableHead>
             <TableHead>Signal RX</TableHead>
             <TableHead>Signal TX</TableHead>
             <TableHead>Status</TableHead>
@@ -221,7 +220,7 @@ export default function OnusPage() {
         <TableBody>
             {!filteredOnus || filteredOnus.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                   {filterOltId 
                     ? `No ONUs found for ${getOltName(filterOltId)}.`
                     : 'No ONUs found. Add your first ONU to get started.'}
@@ -266,9 +265,6 @@ export default function OnusPage() {
                           Unbound
                         </Badge>
                       )}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {onu.macAddress || <span className="text-muted-foreground">N/A</span>}
                     </TableCell>
                     <TableCell className="font-mono text-sm">
                       {onu.signalRx ? `${onu.signalRx} dBm` : <span className="text-muted-foreground">N/A</span>}
