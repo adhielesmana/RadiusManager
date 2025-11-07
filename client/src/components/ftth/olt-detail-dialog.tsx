@@ -6,8 +6,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Radio, Network } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Radio, Network, RefreshCw } from "lucide-react";
 import type { Olt } from "@shared/schema";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface OltDetailDialogProps {
   olt: Olt | null;
@@ -17,11 +21,39 @@ interface OltDetailDialogProps {
 }
 
 export function OltDetailDialog({ olt, open, onOpenChange, popName }: OltDetailDialogProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const fetchSnmpConfigMutation = useMutation({
+    mutationFn: async (oltId: number) => {
+      return await apiRequest("POST", `/api/olts/${oltId}/fetch-snmp-config`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/olts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/olts', olt?.id] });
+      toast({
+        title: "SNMP Config Fetched",
+        description: "Successfully retrieved SNMP configuration from OLT",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Fetch Failed",
+        description: error.message || "Failed to fetch SNMP configuration from OLT",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (!olt) return null;
+
+  const handleFetchSnmpConfig = () => {
+    fetchSnmpConfigMutation.mutate(olt.id);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Radio className="h-5 w-5" />
@@ -128,6 +160,40 @@ export function OltDetailDialog({ olt, open, onOpenChange, popName }: OltDetailD
               <p className="mt-1 text-sm">{olt.description}</p>
             </div>
           )}
+
+          {/* Live SNMP Configuration from OLT */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold">Live SNMP Configuration</h4>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={handleFetchSnmpConfig}
+                disabled={fetchSnmpConfigMutation.isPending}
+                data-testid="button-fetch-snmp-config"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${fetchSnmpConfigMutation.isPending ? 'animate-spin' : ''}`} />
+                {fetchSnmpConfigMutation.isPending ? 'Fetching...' : 'Fetch from OLT'}
+              </Button>
+            </div>
+
+            {olt.snmpConfig ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Last fetched: {olt.snmpConfigFetchedAt ? new Date(olt.snmpConfigFetchedAt).toLocaleString() : 'Never'}</span>
+                </div>
+                <div className="bg-muted rounded-md p-4 max-h-96 overflow-auto">
+                  <pre className="text-xs font-mono whitespace-pre-wrap break-words" data-testid="text-snmp-config">
+                    {olt.snmpConfig}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground text-center py-8 border rounded-md">
+                No SNMP configuration fetched yet. Click "Fetch from OLT" to retrieve the current configuration.
+              </div>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
