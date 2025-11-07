@@ -20,27 +20,38 @@ export class OltService {
       port: olt.telnetPort || 23,
       timeout: 15000,
       negotiationMandatory: false,
-      shellPrompt: /[#>$]/,
-      loginPrompt: /login[: ]*$/i,
-      passwordPrompt: /password[: ]*$/i,
+      shellPrompt: /[#>$%]/,
+      loginPrompt: /([Ll]ogin|[Uu]sername|[Uu]ser)[: ]*$/,
+      passwordPrompt: /[Pp]assword[: ]*$/,
       username: olt.telnetUsername || olt.username || '',
       password: olt.telnetPassword || olt.password || '',
       execTimeout: 10000,
       irs: '\r\n',
       ors: '\n',
       sendTimeout: 2000,
+      stripShellPrompt: false,
     };
 
     console.log(`[Telnet] Connecting to ${olt.vendor} OLT ${olt.name} at ${olt.ipAddress}:${olt.telnetPort || 23}`);
+    console.log(`[Telnet] Using credentials - Username: ${params.username}`);
     await connection.connect(params);
     console.log(`[Telnet] Connected successfully to ${olt.name}`);
     
     // Try to send a simple test command to verify connection
     try {
-      const testResponse = await connection.exec('show version');
-      console.log(`[Telnet] Test command response:`, testResponse.substring(0, 100));
+      await connection.send('\n');
+      const testResponse = await connection.exec('enable');
+      console.log(`[Telnet] Enable response:`, testResponse.substring(0, 200));
     } catch (err: any) {
-      console.warn(`[Telnet] Test command failed (might be normal):`, err.message);
+      console.warn(`[Telnet] Enable command failed (might be normal):`, err.message);
+    }
+    
+    // Try show version
+    try {
+      const versionResponse = await connection.exec('show version');
+      console.log(`[Telnet] Version response (${versionResponse.length} chars):`, versionResponse.substring(0, 200));
+    } catch (err: any) {
+      console.warn(`[Telnet] Show version failed:`, err.message);
     }
     
     return connection;
