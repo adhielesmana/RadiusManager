@@ -674,7 +674,10 @@ export class OltService {
     const connection = await this.connectTelnet(olt);
 
     try {
-      const command = `show gpon onu detail-info gpon-onu_${ponPort}:${onuId}`;
+      // ZTE C320 format: gpon-onu_<rack>/<shelf>/<slot>:<onu_id>
+      // If ponPort is "1/5", convert to "1/1/5" (rack 1, shelf 1, slot 5)
+      const fullPonPort = ponPort.split('/').length === 2 ? `1/${ponPort}` : ponPort;
+      const command = `show gpon onu detail-info gpon-onu_${fullPonPort}:${onuId}`;
       console.log(`[OLT Service] Getting detailed info: ${command}`);
       
       const output = await this.execZteCommand(connection, command);
