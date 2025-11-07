@@ -18,9 +18,10 @@ interface OltDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   popName?: string;
+  onSnmpConfigFetched?: (updatedOlt: Olt) => void;
 }
 
-export function OltDetailDialog({ olt, open, onOpenChange, popName }: OltDetailDialogProps) {
+export function OltDetailDialog({ olt, open, onOpenChange, popName, onSnmpConfigFetched }: OltDetailDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -28,9 +29,28 @@ export function OltDetailDialog({ olt, open, onOpenChange, popName }: OltDetailD
     mutationFn: async (oltId: number) => {
       return await apiRequest("POST", `/api/olts/${oltId}/fetch-snmp-config`, undefined);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/olts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/olts', olt?.id] });
+    onSuccess: async () => {
+      // Invalidate queries
+      await queryClient.invalidateQueries({ queryKey: ['/api/olts'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/olts', olt?.id] });
+      
+      // Refetch the updated OLT data
+      if (olt) {
+        const updatedOlt = await queryClient.fetchQuery({
+          queryKey: ['/api/olts', olt.id],
+          queryFn: async () => {
+            const response = await fetch(`/api/olts/${olt.id}`);
+            if (!response.ok) throw new Error('Failed to fetch updated OLT');
+            return response.json();
+          },
+        });
+        
+        // Update parent state with fresh data
+        if (onSnmpConfigFetched) {
+          onSnmpConfigFetched(updatedOlt);
+        }
+      }
+      
       toast({
         title: "SNMP Config Fetched",
         description: "Successfully retrieved SNMP configuration from OLT",

@@ -274,6 +274,7 @@ export default function OltsPage() {
         onOpenChange={handleCloseDetailDialog}
         olt={viewingOlt}
         popName={viewingPopName}
+        onSnmpConfigFetched={setViewingOlt}
       />
     </div>
   );
