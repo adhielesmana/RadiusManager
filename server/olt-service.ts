@@ -93,13 +93,14 @@ export class OltService {
       console.warn(`[Telnet] Show version failed:`, err.message);
     }
     
-    // For HIOSO, discover available commands using "?"
+    // For HIOSO, discover available commands in EPON mode using "?"
     if (olt.vendor.toLowerCase().includes('hioso')) {
       try {
-        console.log(`[Telnet] Discovering available commands with "?"...`);
+        console.log(`[Telnet] Discovering available EPON commands with "?"...`);
         const helpResponse = await connection.exec('?');
-        console.log(`[Telnet] Available commands (${helpResponse.length} chars):`);
+        console.log(`[Telnet] ========== AVAILABLE EPON COMMANDS ==========`);
         console.log(helpResponse);
+        console.log(`[Telnet] ==========================================`);
       } catch (err: any) {
         console.warn(`[Telnet] Help command failed:`, err.message);
       }
