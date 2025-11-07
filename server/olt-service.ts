@@ -160,44 +160,75 @@ export class OltService {
   private async discoverZteOnus(olt: Olt): Promise<DiscoveredOnu[]> {
     const connection = await this.connectTelnet(olt);
     const onus: DiscoveredOnu[] = [];
-    const errors: string[] = [];
 
     try {
-      const totalSlots = olt.totalPonSlots || 2;
-      const portsPerSlot = olt.portsPerSlot || 16;
-
-      console.log(`[ZTE Discovery] Scanning ${totalSlots} slots x ${portsPerSlot} ports`);
-
-      for (let slot = 1; slot <= totalSlots; slot++) {
-        for (let port = 1; port <= portsPerSlot; port++) {
-          const ponPort = `gpon-olt_1/${slot}/${port}`;
-          const command = `show gpon onu state ${ponPort}`;
-          
-          try {
-            const response = await connection.exec(command);
+      console.log(`[ZTE Discovery] Querying all ONUs with: show gpon onu state`);
+      
+      const response = await connection.exec('show gpon onu state');
+      console.log(`[ZTE Discovery] Response length: ${response?.length || 0} chars`);
+      
+      if (response && response.length > 0) {
+        console.log(`[ZTE Discovery] First 500 chars:`, response.substring(0, 500));
+        
+        const lines = response.split('\n');
+        for (const line of lines) {
+          const onuMatch = line.match(/gpon-onu_1\/(\d+)\/(\d+):(\d+)/);
+          if (onuMatch) {
+            const slot = parseInt(onuMatch[1]);
+            const port = parseInt(onuMatch[2]);
+            const onuId = parseInt(onuMatch[3]);
             
-            if (!response || response.trim().length === 0) {
-              continue;
+            const phaseMatch = line.match(/\s+(working|LOS|offline|online)\s*$/i);
+            const status = phaseMatch ? phaseMatch[1].toLowerCase() : 'unknown';
+            
+            console.log(`[ZTE Discovery] Found ONU: slot=${slot}, port=${port}, id=${onuId}, status=${status}`);
+            
+            let ponSerial = '';
+            let macAddress = null;
+            let signalRx = null;
+            let signalTx = null;
+
+            try {
+              const onuInterface = `gpon-onu_1/${slot}/${port}:${onuId}`;
+              
+              const detailCmd = `show gpon onu detail-info ${onuInterface}`;
+              const detailResponse = await connection.exec(detailCmd);
+              
+              const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
+              if (serialMatch) {
+                ponSerial = serialMatch[1];
+              }
+
+              const powerCmd = `show pon power attenuation ${onuInterface}`;
+              const powerResponse = await connection.exec(powerCmd);
+              const rxMatch = powerResponse.match(/up\s+Rx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
+              const txMatch = powerResponse.match(/down\s+Tx\s*:\s*([-+]?\d+\.?\d*)\(dbm\)/i);
+              
+              if (rxMatch) signalRx = parseFloat(rxMatch[1]);
+              if (txMatch) signalTx = parseFloat(txMatch[1]);
+
+            } catch (detailErr: any) {
+              console.warn(`[ZTE] Could not fetch details for ONU ${slot}/${port}:${onuId}:`, detailErr.message);
             }
 
-            const discovered = await this.parseZteOnuResponse(response, slot, port, connection);
-            if (discovered.length > 0) {
-              console.log(`[ZTE Discovery] Found ${discovered.length} ONUs on port ${slot}/${port}`);
-              onus.push(...discovered);
+            if (ponSerial) {
+              onus.push({
+                ponSerial,
+                ponPort: `${slot}/${port}`,
+                onuId,
+                macAddress,
+                signalRx,
+                signalTx,
+                status: status === 'working' || status === 'online' ? 'online' : 'offline',
+              });
             }
-          } catch (err: any) {
-            if (!err.message.includes('socket not writable')) {
-              errors.push(`Port ${ponPort}: ${err.message}`);
-            }
-            continue;
           }
         }
+      } else {
+        console.log(`[ZTE Discovery] No ONUs found or empty response`);
       }
 
-      console.log(`[ZTE Discovery] Total ONUs found: ${onus.length}`);
-      if (errors.length > 0) {
-        console.warn(`[ZTE Discovery] Warnings:`, errors.slice(0, 10));
-      }
+      console.log(`[ZTE Discovery] Total ONUs discovered: ${onus.length}`);
     } finally {
       connection.end();
     }
