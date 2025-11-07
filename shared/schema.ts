@@ -262,6 +262,10 @@ export const olts = pgTable("olts", {
   portsPerSlot: integer("ports_per_slot").notNull().default(16),
   isActive: boolean("is_active").notNull().default(true),
   
+  // SNMP Configuration (fetched from OLT)
+  snmpConfig: text("snmp_config"), // Raw SNMP configuration from 'show snmp config'
+  snmpConfigFetchedAt: timestamp("snmp_config_fetched_at"), // Last time config was fetched
+  
   description: text("description"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
