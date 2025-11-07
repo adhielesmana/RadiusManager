@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Eye, Pencil } from "lucide-react";
+import { Plus, Eye, Pencil, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -14,12 +14,14 @@ import { OltDialog } from "@/components/ftth/olt-dialog";
 import { OltDetailDialog } from "@/components/ftth/olt-detail-dialog";
 import { useState } from "react";
 import type { Olt, Pop } from "@shared/schema";
+import { useLocation } from "wouter";
 
 export default function OltsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [editingOlt, setEditingOlt] = useState<Olt | null>(null);
   const [viewingOlt, setViewingOlt] = useState<Olt | null>(null);
+  const [, setLocation] = useLocation();
 
   const { data: olts, isLoading } = useQuery<Olt[]>({
     queryKey: ['/api/olts'],
@@ -27,6 +29,10 @@ export default function OltsPage() {
 
   const { data: pops } = useQuery<Pop[]>({
     queryKey: ['/api/pops'],
+  });
+
+  const { data: onuCounts } = useQuery<Record<number, number>>({
+    queryKey: ['/api/olts/stats/onu-counts'],
   });
 
   const handleAdd = () => {
@@ -71,6 +77,14 @@ export default function OltsPage() {
     }
   };
 
+  const getOnuCount = (oltId: number) => {
+    return onuCounts?.[oltId] || 0;
+  };
+
+  const handleViewOnus = (oltId: number) => {
+    setLocation(`/ftth/onus?oltId=${oltId}`);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -103,6 +117,7 @@ export default function OltsPage() {
             <TableHead>IP Address</TableHead>
             <TableHead>PON Slots</TableHead>
             <TableHead>Management</TableHead>
+            <TableHead>ONUs</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -110,7 +125,7 @@ export default function OltsPage() {
         <TableBody>
             {!olts || olts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   No OLTs found. Add your first Optical Line Terminal to get started.
                 </TableCell>
               </TableRow>
@@ -149,6 +164,19 @@ export default function OltsPage() {
                         <Badge variant="outline" className="text-xs w-fit">SNMP</Badge>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleViewOnus(olt.id)}
+                      data-testid={`button-view-onus-${olt.id}`}
+                      className="flex items-center gap-1"
+                    >
+                      <Network className="h-4 w-4" />
+                      <span className="font-medium">{getOnuCount(olt.id)}</span>
+                      <span className="text-xs text-muted-foreground">ONUs</span>
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <Badge variant={olt.isActive ? "default" : "secondary"}>

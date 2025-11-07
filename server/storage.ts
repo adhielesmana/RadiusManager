@@ -165,6 +165,7 @@ export interface IStorage {
   getOnu(id: number): Promise<Onu | undefined>;
   getOltOnus(oltId: number): Promise<Onu[]>;
   getSubscriptionOnu(subscriptionId: number): Promise<Onu | undefined>;
+  getOnuCountsByOlt(): Promise<Record<number, number>>;
   createOnu(onu: InsertOnu): Promise<Onu>;
   updateOnu(id: number, onu: Partial<InsertOnu>): Promise<Onu | undefined>;
   deleteOnu(id: number): Promise<void>;
@@ -1166,6 +1167,22 @@ export class DatabaseStorage implements IStorage {
   async getSubscriptionOnu(subscriptionId: number): Promise<Onu | undefined> {
     const [onu] = await db.select().from(onus).where(eq(onus.subscriptionId, subscriptionId));
     return onu || undefined;
+  }
+
+  async getOnuCountsByOlt(): Promise<Record<number, number>> {
+    const results = await db
+      .select({
+        oltId: onus.oltId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(onus)
+      .groupBy(onus.oltId);
+    
+    const counts: Record<number, number> = {};
+    for (const result of results) {
+      counts[result.oltId] = result.count;
+    }
+    return counts;
   }
 
   async createOnu(insertOnu: InsertOnu): Promise<Onu> {

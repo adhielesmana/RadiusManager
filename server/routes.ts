@@ -829,6 +829,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/olts/stats/onu-counts", requireAdmin, async (_req, res) => {
+    try {
+      const onuCounts = await storage.getOnuCountsByOlt();
+      res.json(onuCounts);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // FTTH Distribution Box Endpoints - Admin only
   app.get("/api/distribution-boxes", requireAdmin, async (_req, res) => {
     try {

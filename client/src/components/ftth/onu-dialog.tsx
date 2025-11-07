@@ -110,6 +110,7 @@ export function OnuDialog({ open, onOpenChange, onu }: OnuDialogProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/onus'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/olts/stats/onu-counts'] });
       toast({ title: "Success", description: "ONU created successfully" });
       onOpenChange(false);
       form.reset();
@@ -129,6 +130,7 @@ export function OnuDialog({ open, onOpenChange, onu }: OnuDialogProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/onus'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/olts/stats/onu-counts'] });
       toast({ title: "Success", description: "ONU updated successfully" });
       onOpenChange(false);
       form.reset();

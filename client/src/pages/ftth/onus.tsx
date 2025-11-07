@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Pencil, Eye } from "lucide-react";
+import { Plus, Trash2, Pencil, Eye, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -12,10 +12,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { OnuDialog } from "@/components/ftth/onu-dialog";
 import { OnuDetailDialog } from "@/components/ftth/onu-detail-dialog";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Onu, DistributionBox, Olt } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,12 @@ export default function OnusPage() {
   const [deletingOnu, setDeletingOnu] = useState<Onu | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [location, setLocation] = useLocation();
+  
+  // Get filter from URL query params
+  const urlParams = new URLSearchParams(location.split('?')[1] || '');
+  const oltIdParam = urlParams.get('oltId');
+  const filterOltId = oltIdParam && !isNaN(parseInt(oltIdParam)) ? parseInt(oltIdParam) : null;
 
   const { data: onus, isLoading } = useQuery<Onu[]>({
     queryKey: ['/api/onus'],
@@ -54,6 +61,7 @@ export default function OnusPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/onus'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/olts/stats/onu-counts'] });
       toast({ title: "Success", description: "ONU deleted successfully" });
       setDeletingOnu(null);
     },
@@ -126,6 +134,17 @@ export default function OnusPage() {
   const viewingOltName = viewingOnu ? getOltName(viewingOnu.oltId) : undefined;
   const viewingBoxName = viewingOnu ? getBoxInfo(viewingOnu.distributionBoxId).code : undefined;
 
+  // Filter ONUs by OLT if filterOltId is set
+  const filteredOnus = useMemo(() => {
+    if (!onus) return [];
+    if (filterOltId === null) return onus;
+    return onus.filter(onu => onu.oltId === filterOltId);
+  }, [onus, filterOltId]);
+
+  const clearFilter = () => {
+    setLocation('/ftth/onus');
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -144,6 +163,22 @@ export default function OnusPage() {
           <p className="text-sm text-muted-foreground">
             Manage customer premises equipment in your fiber network
           </p>
+          {filterOltId && (
+            <div className="flex items-center gap-2 mt-2">
+              <Badge variant="secondary" className="flex items-center gap-1">
+                Filtered by OLT: {getOltName(filterOltId)}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-4 w-4 p-0 hover:bg-transparent"
+                  onClick={clearFilter}
+                  data-testid="button-clear-filter"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </Badge>
+            </div>
+          )}
         </div>
         <Button onClick={handleAdd} data-testid="button-add-onu">
           <Plus className="h-4 w-4 mr-2" />
@@ -167,14 +202,16 @@ export default function OnusPage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-            {!onus || onus.length === 0 ? (
+            {!filteredOnus || filteredOnus.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                  No ONUs found. Add your first ONU to get started.
+                  {filterOltId 
+                    ? `No ONUs found for ${getOltName(filterOltId)}.`
+                    : 'No ONUs found. Add your first ONU to get started.'}
                 </TableCell>
               </TableRow>
             ) : (
-              onus.map((onu) => {
+              filteredOnus.map((onu) => {
                 const boxInfo = getBoxInfo(onu.distributionBoxId);
                 return (
                   <TableRow key={onu.id} data-testid={`row-onu-${onu.id}`}>
