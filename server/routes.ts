@@ -920,6 +920,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Fetch and store SNMP configuration from OLT
+  app.post("/api/olts/:id/fetch-snmp-config", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const olt = await storage.getOlt(id);
+      
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found" });
+      }
+
+      // Fetch SNMP config from OLT via Telnet
+      const snmpConfig = await oltService.fetchSnmpConfig(olt);
+      
+      // Store in database with timestamp
+      await storage.updateOlt(id, {
+        snmpConfig,
+        snmpConfigFetchedAt: new Date(),
+      });
+
+      res.json({
+        success: true,
+        message: "SNMP configuration fetched successfully",
+        snmpConfig,
+        fetchedAt: new Date(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // FTTH Distribution Box Endpoints - Admin only
   app.get("/api/distribution-boxes", requireAdmin, async (_req, res) => {
     try {

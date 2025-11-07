@@ -992,6 +992,68 @@ export class OltService {
     }
   }
 
+  /**
+   * Fetch SNMP configuration from OLT via Telnet
+   */
+  async fetchSnmpConfig(olt: Olt): Promise<string> {
+    if (!olt.telnetEnabled) {
+      throw new Error('Telnet is not enabled for this OLT');
+    }
+
+    const session = new TelnetSession();
+    
+    try {
+      const vendor = olt.vendor.toLowerCase();
+      
+      if (vendor.includes('zte')) {
+        // Connect to ZTE OLT
+        await session.connect({
+          host: olt.ipAddress,
+          port: olt.telnetPort,
+          username: olt.telnetUsername || olt.username || '',
+          password: olt.telnetPassword || olt.password || '',
+          timeout: 15000,
+          shellPrompt: /[#>]/,
+          loginPrompt: /Username:/i,
+          passwordPrompt: /Password:/i,
+          ors: '\r\n'
+        });
+
+        // Disable paging
+        await session.execute('terminal length 0', 3000);
+        
+        // Fetch SNMP configuration
+        const config = await session.execute('show snmp config', 10000);
+        return config;
+        
+      } else if (vendor.includes('hioso')) {
+        // Connect to HIOSO OLT (EPON)
+        await session.connect({
+          host: olt.ipAddress,
+          port: olt.telnetPort,
+          username: olt.telnetUsername || olt.username || '',
+          password: olt.telnetPassword || olt.password || '',
+          timeout: 15000,
+          shellPrompt: /[#>]/,
+          loginPrompt: /Username:/i,
+          passwordPrompt: /Password:/i,
+          accessPassword: olt.password || '',
+          enablePassword: olt.enablePassword || '',
+          ors: '\r\n'
+        });
+
+        // Fetch SNMP configuration
+        const config = await session.execute('show snmp', 10000);
+        return config;
+        
+      } else {
+        throw new Error(`Unsupported OLT vendor for SNMP config fetch: ${olt.vendor}`);
+      }
+    } finally {
+      await session.close();
+    }
+  }
+
 }
 
 export const oltService = new OltService();
