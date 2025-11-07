@@ -207,7 +207,6 @@ export default function OnusPage() {
           <TableRow>
             <TableHead>PON Serial</TableHead>
             <TableHead>OLT</TableHead>
-            <TableHead>PON Port</TableHead>
             <TableHead>ODC</TableHead>
             <TableHead>ONU ID</TableHead>
             <TableHead>Distribution Box</TableHead>
@@ -221,7 +220,7 @@ export default function OnusPage() {
         <TableBody>
             {!filteredOnus || filteredOnus.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                   {filterOltId 
                     ? `No ONUs found for ${getOltName(filterOltId)}.`
                     : 'No ONUs found. Add your first ONU to get started.'}
@@ -237,7 +236,6 @@ export default function OnusPage() {
                       {onu.ponSerial}
                     </TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{getOltName(onu.oltId)}</TableCell>
-                    <TableCell className="font-mono text-xs whitespace-nowrap">{onu.ponPort}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {(onu as any).odcNumber ? (
                         <Badge variant="outline" className="font-mono">
