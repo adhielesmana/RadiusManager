@@ -235,35 +235,43 @@ export class OltService {
           try {
             console.log(`[HIOSO] Entering pon${ponPort}...`);
             await connection.send(`pon${ponPort}\n`);
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
+            console.log(`[HIOSO] Querying ONUs on port ${ponPort}...`);
             for (let onuId = 1; onuId <= maxOnusPerPort; onuId++) {
               try {
                 const command = `show onu ${onuId}`;
+                console.log(`[HIOSO] Executing: ${command}`);
                 const response = await connection.exec(command);
+                console.log(`[HIOSO] Response for ${ponPort}:${onuId} (${response.length} chars):`, response.substring(0, 200));
                 
                 if (response && !response.toLowerCase().includes('invalid') && 
                     !response.toLowerCase().includes('not found') &&
-                    !response.toLowerCase().includes('error')) {
+                    !response.toLowerCase().includes('error') &&
+                    response.trim().length > 0) {
                   
                   const discovered = this.parseHiosoOnuResponse(response, ponPort, onuId);
                   if (discovered) {
                     onus.push(discovered);
-                    console.log(`[HIOSO] Found ONU on ${ponPort}:${onuId}`);
+                    console.log(`[HIOSO] ✓ Found ONU on ${ponPort}:${onuId} - MAC: ${discovered.macAddress || 'N/A'}, Status: ${discovered.status}`);
                   }
-                } else if (onuId === 1) {
-                  break;
+                } else {
+                  console.log(`[HIOSO] No valid ONU at ${ponPort}:${onuId}, stopping port scan`);
+                  if (onuId === 1) break;
                 }
               } catch (err: any) {
+                console.log(`[HIOSO] Error querying ${ponPort}:${onuId}: ${err.message}`);
                 if (onuId > 10) break;
                 continue;
               }
             }
             
+            console.log(`[HIOSO] Exiting pon${ponPort}...`);
             await connection.send('exit\n');
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 500));
             
           } catch (err: any) {
+            console.error(`[HIOSO] Port pon${ponPort} error: ${err.message}`);
             errors.push(`Port pon${ponPort}: ${err.message}`);
             continue;
           }
