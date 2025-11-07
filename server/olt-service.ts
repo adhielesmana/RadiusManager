@@ -485,18 +485,30 @@ export class OltService {
   ): Promise<DiscoveredOnu[]> {
     const onus: DiscoveredOnu[] = [];
     
-    // Simply create ONU records with basic info from the expected list
-    // Don't try to parse the bulk response or fetch individual details here
+    // Fetch serial numbers individually for each ONU on this port
+    // This is still faster than the old approach since we're querying by port group
     for (const expectedOnu of expectedOnus) {
-      onus.push({
-        ponSerial: `BULK_${slot}_${port}_${expectedOnu.onuId}`,
-        ponPort: `${slot}/${port}`,
-        onuId: expectedOnu.onuId,
-        macAddress: null,
-        signalRx: null,
-        signalTx: null,
-        status: expectedOnu.status === 'working' ? 'online' : 'offline',
-      });
+      const onuInterface = `gpon-onu_1/${slot}/${port}:${expectedOnu.onuId}`;
+      
+      try {
+        const detailResponse = await session.execute(`show gpon onu detail-info ${onuInterface}`, 5000);
+        
+        const serialMatch = detailResponse.match(/Serial\s+number\s*:\s*([A-Z0-9]+)/i);
+        const ponSerial = serialMatch ? serialMatch[1] : `UNKNOWN_${slot}_${port}_${expectedOnu.onuId}`;
+
+        onus.push({
+          ponSerial,
+          ponPort: `${slot}/${port}`,
+          onuId: expectedOnu.onuId,
+          macAddress: null,
+          signalRx: null,
+          signalTx: null,
+          status: expectedOnu.status === 'working' ? 'online' : 'offline',
+        });
+      } catch (err: any) {
+        console.warn(`[ZTE Bulk] Failed to get serial for ${onuInterface}:`, err.message);
+        // Skip this ONU if we can't get its serial
+      }
     }
 
     return onus;
