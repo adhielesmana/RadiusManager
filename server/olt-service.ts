@@ -25,12 +25,24 @@ export class OltService {
       passwordPrompt: /password[: ]*$/i,
       username: olt.telnetUsername || olt.username || '',
       password: olt.telnetPassword || olt.password || '',
-      execTimeout: 5000,
+      execTimeout: 10000,
+      irs: '\r\n',
+      ors: '\n',
+      sendTimeout: 2000,
     };
 
     console.log(`[Telnet] Connecting to ${olt.vendor} OLT ${olt.name} at ${olt.ipAddress}:${olt.telnetPort || 23}`);
     await connection.connect(params);
     console.log(`[Telnet] Connected successfully to ${olt.name}`);
+    
+    // Try to send a simple test command to verify connection
+    try {
+      const testResponse = await connection.exec('show version');
+      console.log(`[Telnet] Test command response:`, testResponse.substring(0, 100));
+    } catch (err: any) {
+      console.warn(`[Telnet] Test command failed (might be normal):`, err.message);
+    }
+    
     return connection;
   }
 
@@ -150,27 +162,49 @@ export class OltService {
       const totalPorts = (olt.totalPonSlots || 1) * (olt.portsPerSlot || 8);
       console.log(`[HIOSO Discovery] OLT: ${olt.name}, Scanning ${totalPorts} PON ports`);
 
+      // Try different command variations
+      const commandVariations = [
+        (port: number) => `show epon onu-information interface epon 0/${port}`,
+        (port: number) => `show epon onu-information epon 0/${port}`,
+        (port: number) => `show onu running config epon 0/${port}`,
+        (port: number) => `show epon interface epon 0/${port}`,
+      ];
+
       for (let port = 1; port <= totalPorts; port++) {
         const ponPort = `0/${port}`;
-        const command = `show epon onu-information interface epon ${ponPort}`;
-        
-        try {
-          console.log(`[HIOSO] Executing: ${command}`);
-          const response = await connection.exec(command);
-          console.log(`[HIOSO] Port ${ponPort} response (${response.length} chars):`, response.substring(0, 200));
-          const discovered = await this.parseHiosoOnuResponse(response, ponPort, connection);
-          console.log(`[HIOSO] Port ${ponPort} found ${discovered.length} ONUs`);
-          onus.push(...discovered);
-        } catch (err: any) {
-          console.error(`[HIOSO] Port ${ponPort} error:`, err.message);
-          errors.push(`Port ${ponPort}: ${err.message}`);
-          continue;
+        let foundOnus = false;
+
+        for (const cmdFunc of commandVariations) {
+          const command = cmdFunc(port);
+          
+          try {
+            console.log(`[HIOSO] Trying command: ${command}`);
+            const response = await connection.exec(command);
+            console.log(`[HIOSO] Port ${ponPort} response (${response.length} chars):`, response.substring(0, 300));
+            
+            if (response.length > 0 && !response.includes('Invalid') && !response.includes('Error')) {
+              const discovered = await this.parseHiosoOnuResponse(response, ponPort, connection);
+              console.log(`[HIOSO] Port ${ponPort} found ${discovered.length} ONUs with this command`);
+              if (discovered.length > 0) {
+                onus.push(...discovered);
+                foundOnus = true;
+                break; // Found working command, move to next port
+              }
+            }
+          } catch (err: any) {
+            console.error(`[HIOSO] Port ${ponPort} command "${command}" error:`, err.message);
+            continue; // Try next command variation
+          }
+        }
+
+        if (!foundOnus) {
+          errors.push(`Port ${ponPort}: No working command found`);
         }
       }
 
       console.log(`[HIOSO Discovery] OLT: ${olt.name}, Total ONUs discovered: ${onus.length}`);
       if (errors.length > 0) {
-        console.warn(`HIOSO OLT ${olt.name} discovery warnings:`, errors.slice(0, 5));
+        console.warn(`HIOSO OLT ${olt.name} discovery warnings:`, errors.slice(0, 10));
       }
     } catch (topErr: any) {
       console.error(`[HIOSO Discovery] Fatal error for OLT ${olt.name}:`, topErr.message);
