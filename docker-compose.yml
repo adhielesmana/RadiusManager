@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database - Shared by ISP Manager and FreeRADIUS
   postgres:

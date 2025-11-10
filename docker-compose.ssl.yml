@@ -2,8 +2,6 @@
 # This file adds Nginx reverse proxy with Let's Encrypt SSL support
 # Usage: docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
 
-version: '3.8'
-
 services:
   # ISP Manager App - Remove port exposure when using SSL
   app:
