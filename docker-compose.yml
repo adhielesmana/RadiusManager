@@ -60,7 +60,7 @@ services:
     container_name: isp-manager-app
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5000"  # Auto-assign available port on host, maps to container port 5000
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DATABASE_URL=postgresql://ispuser:${DB_PASSWORD:-isppass123}@postgres:5432/ispmanager
