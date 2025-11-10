@@ -701,8 +701,8 @@ export class OltService {
             await connection.send(`pon${ponPort}\n`);
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            console.log(`[HIOSO] Querying ONU brief list on port ${ponPort}...`);
-            const briefResponse = await connection.exec('show onu brief');
+            console.log(`[HIOSO] Querying ONU list on port ${ponPort}...`);
+            const briefResponse = await connection.exec('show onu list');
             console.log(`[HIOSO] Brief response length: ${briefResponse.length} chars`);
             console.log(`[HIOSO] Raw brief response for ${ponPort}:\n${briefResponse}`);
             console.log(`[HIOSO] ========== END RAW RESPONSE ==========`);
