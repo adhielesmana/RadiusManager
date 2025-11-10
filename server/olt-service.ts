@@ -228,7 +228,7 @@ export class OltService {
     olt: Olt,
     onBatch?: (onus: DiscoveredOnu[], progress: { discovered: number, total: number }) => Promise<void>
   ): Promise<DiscoveredOnu[]> {
-    const POOL_SIZE = 8; // Create 8 Telnet sessions for parallel processing (optimized for 1000+ ONUs)
+    const POOL_SIZE = 4; // Create 4 Telnet sessions for parallel processing (reduced to avoid overwhelming OLT)
     const BATCH_SIZE = 20; // Save every 20 ONUs
     const sessions: TelnetSession[] = [];
     const onus: DiscoveredOnu[] = [];
@@ -283,6 +283,13 @@ export class OltService {
       
       portsToScan.forEach((portInfo, index) => {
         portChunks[index % POOL_SIZE].push(portInfo);
+      });
+
+      // Debug: Log port assignments for each worker
+      console.log(`[ZTE Discovery] Port assignments per worker:`);
+      portChunks.forEach((chunk, index) => {
+        const portList = chunk.map(p => `${p.slot}/${p.port}`).join(', ');
+        console.log(`[ZTE Discovery] Worker ${index}: ${chunk.length} ports [${portList}]`);
       });
 
       // Process ports in parallel - each worker queries its assigned ports directly
