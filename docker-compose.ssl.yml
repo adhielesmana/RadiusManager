@@ -7,9 +7,9 @@ version: '3.8'
 services:
   # ISP Manager App - Remove port exposure when using SSL
   app:
-    ports: []  # Remove direct port 5000 exposure
+    ports: []  # Remove direct port 5000 exposure (Nginx will proxy)
     networks:
-      - isp-network
+      - isp-internal-network
 
   # Nginx Reverse Proxy with SSL
   reverse-proxy:
@@ -18,18 +18,18 @@ services:
       dockerfile: Dockerfile
     container_name: isp-manager-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     environment:
       - APP_DOMAIN=${APP_DOMAIN}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
       - LE_STAGING=${LE_STAGING:-false}
     volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot-challenges:/var/www/certbot
-      - nginx-cache:/var/cache/nginx
+      - isp-letsencrypt:/etc/letsencrypt
+      - isp-certbot-challenges:/var/www/certbot
+      - isp-nginx-cache:/var/cache/nginx
     networks:
-      - isp-network
+      - isp-internal-network
     depends_on:
       - app
     restart: unless-stopped
@@ -39,15 +39,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
 volumes:
-  letsencrypt:
+  # Namespaced volumes for SSL
+  isp-letsencrypt:
     driver: local
-  certbot-challenges:
+    name: isp-manager-letsencrypt
+  isp-certbot-challenges:
     driver: local
-  nginx-cache:
+    name: isp-manager-certbot
+  isp-nginx-cache:
     driver: local
+    name: isp-manager-nginx-cache
 
 networks:
-  isp-network:
-    external: true
+  isp-internal-network:
+    # Use the network created in docker-compose.yml
+    external: false

@@ -1,10 +1,22 @@
 # ISP Manager - Docker Deployment Guide
 
+## 🛡️ Safe for Servers with Existing Docker Containers
+
+ISP Manager is designed to **coexist safely** with your existing Docker containers:
+
+✅ **Isolated Network** - Uses dedicated subnet (172.25.0.0/16) that won't conflict  
+✅ **Configurable Ports** - All ports customizable to avoid conflicts  
+✅ **Resource Limits** - Won't starve your other containers of CPU/memory  
+✅ **Namespaced Volumes** - No volume name conflicts  
+✅ **PostgreSQL on 5433** - Avoids conflict with standard PostgreSQL on 5432
+
+📖 **See [DOCKER-ISOLATION.md](DOCKER-ISOLATION.md) for detailed isolation features and troubleshooting.**
+
 ## Overview
 
 This guide explains how to run the complete ISP Manager system with FreeRADIUS authentication using Docker Compose. The dockerized setup includes:
 
-- **PostgreSQL** - Shared database for ISP Manager and FreeRADIUS
+- **PostgreSQL** - Shared database for ISP Manager and FreeRADIUS (on port 5433)
 - **FreeRADIUS Server** - RADIUS authentication with PostgreSQL backend
 - **ISP Manager Application** - Node.js/React application with Express backend
 

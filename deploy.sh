@@ -243,10 +243,15 @@ show_access_info() {
     
     echo -e "${GREEN}Database Access:${NC}"
     echo -e "  Host:     ${BLUE}localhost${NC}"
-    echo -e "  Port:     ${BLUE}5432${NC}"
+    echo -e "  Port:     ${BLUE}${POSTGRES_HOST_PORT:-5433}${NC} ${YELLOW}(uses 5433 to avoid conflicts)${NC}"
     echo -e "  Database: ${BLUE}ispmanager${NC}"
     echo -e "  Username: ${BLUE}ispuser${NC}"
     echo -e "  Password: ${BLUE}(see .env file)${NC}"
+    echo ""
+    
+    echo -e "${GREEN}Network Isolation:${NC}"
+    echo -e "  Network:  ${BLUE}isp-manager-network (172.25.0.0/16)${NC}"
+    echo -e "  Note:     ${YELLOW}Isolated from other Docker containers${NC}"
     echo ""
     
     echo -e "${GREEN}FreeRADIUS:${NC}"

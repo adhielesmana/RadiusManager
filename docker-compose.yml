@@ -11,17 +11,27 @@ services:
       POSTGRES_USER: ispuser
       POSTGRES_PASSWORD: ${DB_PASSWORD:-isppass123}
     ports:
-      - "5432:5432"
+      # Use host port 5433 to avoid conflicts with existing PostgreSQL on 5432
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - isp-postgres-data:/var/lib/postgresql/data
       - ./docker/postgres-init:/docker-entrypoint-initdb.d
     networks:
-      - isp-network
+      - isp-internal-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ispuser -d ispmanager"]
       interval: 10s
       timeout: 5s
       retries: 5
+    # Resource limits to prevent interference with other containers
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
   # FreeRADIUS Server with PostgreSQL Backend
   freeradius:
@@ -29,9 +39,9 @@ services:
     container_name: isp-freeradius
     restart: unless-stopped
     ports:
-      - "1812:1812/udp"  # Authentication
-      - "1813:1813/udp"  # Accounting
-      - "18120:18120"     # Status server (optional)
+      - "${RADIUS_AUTH_PORT:-1812}:1812/udp"  # Authentication
+      - "${RADIUS_ACCT_PORT:-1813}:1813/udp"  # Accounting
+      - "${RADIUS_STATUS_PORT:-18120}:18120"   # Status server (optional)
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -50,7 +60,16 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - isp-network
+      - isp-internal-network
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
   # ISP Manager Application (Node.js + React)
   app:
@@ -60,7 +79,8 @@ services:
     container_name: isp-manager-app
     restart: unless-stopped
     ports:
-      - "5000"  # Auto-assign available port on host, maps to container port 5000
+      # Auto-assign available port or use custom port from env
+      - "${APP_HOST_PORT:-5000}:5000"
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - DATABASE_URL=postgresql://ispuser:${DB_PASSWORD:-isppass123}@postgres:5432/ispmanager
@@ -84,12 +104,32 @@ services:
       freeradius:
         condition: service_started
     networks:
-      - isp-network
+      - isp-internal-network
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
 volumes:
-  postgres-data:
+  # Namespaced volume names to avoid conflicts
+  isp-postgres-data:
     driver: local
+    name: isp-manager-postgres-data
 
 networks:
-  isp-network:
+  # Isolated network with custom subnet to avoid conflicts
+  isp-internal-network:
     driver: bridge
+    name: isp-manager-network
+    ipam:
+      driver: default
+      config:
+        # Use a unique subnet that won't conflict with other Docker networks
+        # Default Docker uses 172.17.0.0/16, so we use 172.25.0.0/16
+        - subnet: 172.25.0.0/16
+          gateway: 172.25.0.1

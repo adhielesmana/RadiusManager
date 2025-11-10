@@ -224,9 +224,16 @@ main() {
     else
         check_port 5000 "ISP Manager Application"
     fi
-    check_port 5432 "PostgreSQL Database"
+    # PostgreSQL uses 5433 by default to avoid conflicts with existing PostgreSQL on 5432
+    check_port 5433 "PostgreSQL Database (ISP Manager)"
     check_port 1812 "FreeRADIUS Authentication"
     check_port 1813 "FreeRADIUS Accounting"
+    
+    # Check if standard PostgreSQL port is in use
+    if check_port_in_use 5432; then
+        print_info "Port 5432 is in use (likely another PostgreSQL instance)"
+        print_success "ISP Manager will use port 5433 to avoid conflicts"
+    fi
     
     # Setup environment file
     print_header "Setting Up Environment Configuration"
