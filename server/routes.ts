@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { oltService } from "./olt-service";
 import discoveryManager from "./discovery-manager";
+import snmp from 'snmp-native';
 
 // Hardcoded superadmin credentials
 const SUPERADMIN = {
@@ -1295,6 +1296,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: `Discovery stopped for OLT ${oltId}` });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Test SNMP connection endpoint
+  app.post("/api/test-snmp", requireAdmin, async (req, res) => {
+    try {
+      const { oltId } = req.body;
+      if (!oltId) {
+        return res.status(400).json({ error: "OLT ID is required" });
+      }
+
+      const olt = await storage.getOlt(oltId);
+      if (!olt) {
+        return res.status(404).json({ error: "OLT not found" });
+      }
+
+      console.log(`[SNMP TEST] Testing SNMP connection to ${olt.name} at ${olt.ipAddress}:${olt.snmpPort}`);
+      console.log(`[SNMP TEST] Community: ${olt.snmpCommunity}`);
+      
+      const startTime = Date.now();
+      
+      const session = new snmp.Session({ 
+        timeout: 3000,
+        retries: 1
+      });
+
+      session.get({ 
+        host: olt.ipAddress,
+        port: olt.snmpPort,
+        community: olt.snmpCommunity || 'public',
+        oid: '.1.3.6.1.2.1.1.1.0' 
+      }, (error: any, varbinds: any[]) => {
+        const elapsed = Date.now() - startTime;
+        session.close();
+        
+        if (error) {
+          console.log(`[SNMP TEST] ❌ Connection failed after ${elapsed}ms: ${error.message || error}`);
+          res.json({ 
+            success: false, 
+            error: error.message || String(error),
+            elapsed,
+            details: {
+              host: olt.ipAddress,
+              port: olt.snmpPort,
+              community: olt.snmpCommunity
+            }
+          });
+        } else {
+          console.log(`[SNMP TEST] ✅ Connection successful in ${elapsed}ms`);
+          console.log(`[SNMP TEST] System Description: ${varbinds[0]?.value}`);
+          res.json({ 
+            success: true, 
+            systemDescription: varbinds[0]?.value,
+            elapsed,
+            details: {
+              host: olt.ipAddress,
+              port: olt.snmpPort,
+              community: olt.snmpCommunity
+            }
+          });
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SNMP TEST] Error:`, error);
+      res.status(500).json({ error: error.message });
     }
   });
 

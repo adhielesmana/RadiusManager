@@ -65,10 +65,41 @@ export function OltDetailDialog({ olt, open, onOpenChange, popName, onSnmpConfig
     },
   });
 
+  const testSnmpMutation = useMutation({
+    mutationFn: async (oltId: number) => {
+      return await apiRequest("POST", `/api/test-snmp`, { oltId });
+    },
+    onSuccess: (data: any) => {
+      if (data.success) {
+        toast({
+          title: "SNMP Connection Successful",
+          description: `Connected in ${data.elapsed}ms. System: ${data.systemDescription?.substring(0, 50)}...`,
+        });
+      } else {
+        toast({
+          title: "SNMP Connection Failed",
+          description: `${data.error} (${data.elapsed}ms)`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Test Failed",
+        description: error.message || "Failed to test SNMP connection",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (!olt) return null;
 
   const handleFetchSnmpConfig = () => {
     fetchSnmpConfigMutation.mutate(olt.id);
+  };
+
+  const handleTestSnmp = () => {
+    testSnmpMutation.mutate(olt.id);
   };
 
   return (
@@ -185,16 +216,28 @@ export function OltDetailDialog({ olt, open, onOpenChange, popName, onSnmpConfig
           <div className="border-t pt-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm font-semibold">Live SNMP Configuration</h4>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={handleFetchSnmpConfig}
-                disabled={fetchSnmpConfigMutation.isPending}
-                data-testid="button-fetch-snmp-config"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${fetchSnmpConfigMutation.isPending ? 'animate-spin' : ''}`} />
-                {fetchSnmpConfigMutation.isPending ? 'Fetching...' : 'Fetch from OLT'}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={handleTestSnmp}
+                  disabled={testSnmpMutation.isPending}
+                  data-testid="button-test-snmp"
+                >
+                  <Network className={`h-4 w-4 mr-2 ${testSnmpMutation.isPending ? 'animate-spin' : ''}`} />
+                  {testSnmpMutation.isPending ? 'Testing...' : 'Test SNMP'}
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={handleFetchSnmpConfig}
+                  disabled={fetchSnmpConfigMutation.isPending}
+                  data-testid="button-fetch-snmp-config"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${fetchSnmpConfigMutation.isPending ? 'animate-spin' : ''}`} />
+                  {fetchSnmpConfigMutation.isPending ? 'Fetching...' : 'Fetch from OLT'}
+                </Button>
+              </div>
             </div>
 
             {olt.snmpConfig ? (
