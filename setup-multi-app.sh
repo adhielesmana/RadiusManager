@@ -33,6 +33,53 @@ print_info() {
     echo -e "${BLUE}ℹ $1${NC}"
 }
 
+# Check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Detect Nginx running in Docker with PUBLICLY exposed ports 80/443
+detect_nginx_docker() {
+    # Check if Docker is available and running
+    if ! command_exists docker || ! docker ps >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    # Find containers with publicly exposed ports 80 or 443 (0.0.0.0 or ::)
+    local ALL_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+    
+    for CONTAINER in $ALL_CONTAINERS; do
+        # Check if container has public port 80 or 443 binding
+        local PORT_BINDINGS=$(docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Ports}}' 2>/dev/null)
+        
+        if echo "$PORT_BINDINGS" | grep -qE '"(80|443)/tcp".*"HostIp":"(0\.0\.0\.0|::)"'; then
+            # Check if it's nginx or proxy related
+            local IMAGE=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null)
+            
+            if echo "$CONTAINER $IMAGE" | grep -iqE "(nginx|proxy)"; then
+                # Found a matching container
+                echo "$CONTAINER"
+                return 0
+            fi
+        fi
+    done
+    
+    return 1
+}
+
+# Check if Nginx container has /etc/letsencrypt mounted
+check_nginx_letsencrypt_mount() {
+    local CONTAINER=$1
+    
+    if [ -z "$CONTAINER" ]; then
+        return 1
+    fi
+    
+    # Check if /etc/letsencrypt is mounted
+    docker inspect "$CONTAINER" 2>/dev/null | grep -q "/etc/letsencrypt" && return 0
+    return 1
+}
+
 # Store app configurations
 declare -a APP_NAMES
 declare -a APP_DOMAINS
@@ -126,6 +173,44 @@ echo ""
 # Check for port detection tools
 check_port_detection_tools
 
+# Auto-detect Nginx in Docker
+print_header "Nginx Detection"
+
+DETECTED_NGINX=$(detect_nginx_docker)
+
+if [ -n "$DETECTED_NGINX" ]; then
+    print_success "Detected Nginx Docker container: $DETECTED_NGINX"
+    echo ""
+    
+    echo -e "${GREEN}Automatic SSL Configuration Available!${NC}"
+    echo "  • Your Nginx container is running on ports 80/443"
+    echo "  • Each app will run on a different port (5000, 5100, etc.)"
+    echo "  • Automated SSL certificate provisioning with Let's Encrypt"
+    echo "  • Automatic Nginx configuration generation for all apps"
+    echo ""
+    
+    # Check if /etc/letsencrypt is mounted
+    if check_nginx_letsencrypt_mount "$DETECTED_NGINX"; then
+        print_success "/etc/letsencrypt is already mounted in Nginx container"
+    else
+        print_warning "/etc/letsencrypt is NOT mounted in Nginx container"
+        echo ""
+        echo -e "${YELLOW}Important: Your Nginx container needs this volume mount:${NC}"
+        echo "  -v /etc/letsencrypt:/etc/letsencrypt:ro"
+        echo ""
+        echo "SSL provisioning may fail without this mount."
+    fi
+    
+    echo ""
+    print_info "This setup will create separate .env files for each app"
+    print_info "Each app will be configured to use $DETECTED_NGINX for SSL"
+    echo ""
+else
+    print_info "No Nginx Docker container detected on ports 80/443"
+    print_info "Make sure you have Nginx running if you want SSL/HTTPS"
+    echo ""
+fi
+
 # Detect running Docker containers
 print_header "Detecting Running Docker Containers"
 
@@ -153,12 +238,17 @@ else
 fi
 
 # Ask for email (shared across all apps)
+print_header "SSL Configuration"
+echo ""
+echo -e "${BLUE}All applications will use the same email for SSL certificates${NC}"
+echo ""
+
 while true; do
-    read -p "Enter your email for SSL certificates: " SSL_EMAIL
-    if [ -n "$SSL_EMAIL" ]; then
+    read -p "Enter your email for Let's Encrypt SSL certificates: " SSL_EMAIL
+    if [ -n "$SSL_EMAIL" ] && [[ "$SSL_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         break
     fi
-    print_error "Email cannot be empty"
+    print_error "Valid email address is required"
 done
 
 echo ""
