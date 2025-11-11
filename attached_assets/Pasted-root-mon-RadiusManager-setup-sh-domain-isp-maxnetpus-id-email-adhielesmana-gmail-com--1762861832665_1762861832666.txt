@@ -1,0 +1,65 @@
+root@mon:~/RadiusManager# ./setup.sh --domain isp.maxnetpus.id --email adhielesmana@gmail.com 
+================================================
+ISP Manager - Development Server Setup
+================================================
+ℹ SSL Mode: ENABLED
+ℹ Domain: isp.maxnetpus.id
+ℹ Email: adhielesmana@gmail.com
+ℹ Staging: false
+
+ℹ Detecting operating system...
+✓ Linux detected
+================================================
+Checking Docker Installation
+================================================
+✓ Docker is installed: Docker version 28.5.1, build e180ab8
+================================================
+Checking Docker Compose
+================================================
+✓ Docker Compose is installed: Docker Compose version v2.40.3
+================================================
+Checking Docker Daemon
+================================================
+✓ Docker daemon is running
+================================================
+Checking for Existing Web Server
+================================================
+⚠ Ports 80 and/or 443 are in use
+⚠ Another web server is using ports 80/443
+✗ Cannot use SSL mode - ports 80/443 are required
+ℹ Will configure for local mode on port 5000
+================================================
+Checking Port Availability
+================================================
+⚠ Port 5000 (ISP Manager Application) is already in use
+⚠ Port 5433 (PostgreSQL Database (ISP Manager)) is already in use
+✓ Port 1812 (FreeRADIUS Authentication) is available
+✓ Port 1813 (FreeRADIUS Accounting) is available
+================================================
+Setting Up Environment Configuration
+================================================
+ℹ Creating .env file from template...
+ℹ Generating secure random secrets...
+✓ .env file created with secure random secrets
+ℹ You can customize the .env file if needed
+================================================
+Creating Required Directories
+================================================
+✓ Directories created
+================================================
+Checking Node.js Dependencies
+================================================
+⚠ Node modules not found
+================================================
+Setup Complete!
+================================================
+✓ Your development server is ready for ISP Manager deployment
+
+ℹ Next steps:
+  1. Review and customize the .env file with your settings
+  2. Run './deploy.sh' to build and start the application
+  3. Access the application at http://localhost:5000
+
+ℹ Default credentials:
+  Username: adhielesmana
+  Password: admin123
