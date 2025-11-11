@@ -37,6 +37,83 @@ print_info() {
 declare -a APP_NAMES
 declare -a APP_DOMAINS
 declare -a APP_PORTS
+declare -a ASSIGNED_PORTS  # Track ports assigned in this session
+
+# Check if port detection tools are available
+PORT_DETECTION_AVAILABLE=true
+check_port_detection_tools() {
+    if ! command -v netstat >/dev/null 2>&1 && \
+       ! command -v ss >/dev/null 2>&1 && \
+       ! command -v lsof >/dev/null 2>&1; then
+        PORT_DETECTION_AVAILABLE=false
+        print_warning "Port detection tools (netstat/ss/lsof) not found"
+        print_info "Port availability checks will be disabled - please verify ports manually"
+        echo ""
+    fi
+}
+
+# Check if a port is in use
+check_port_in_use() {
+    local PORT=$1
+    
+    # If no detection tools, assume port is free
+    if [ "$PORT_DETECTION_AVAILABLE" = false ]; then
+        return 1
+    fi
+    
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tuln 2>/dev/null | grep -q ":$PORT "
+    elif command -v ss >/dev/null 2>&1; then
+        ss -tuln 2>/dev/null | grep -q ":$PORT "
+    elif command -v lsof >/dev/null 2>&1; then
+        lsof -i ":$PORT" >/dev/null 2>&1
+    else
+        # Fallback - assume port is free
+        return 1
+    fi
+}
+
+# Check if port is already assigned in this session
+is_port_assigned() {
+    local PORT=$1
+    for ASSIGNED in "${ASSIGNED_PORTS[@]}"; do
+        if [ "$ASSIGNED" = "$PORT" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Find next available port starting from a given port
+find_available_port() {
+    local START_PORT=${1:-5000}
+    local MAX_ATTEMPTS=100
+    local PORT=$START_PORT
+    
+    for ((i=0; i<MAX_ATTEMPTS; i++)); do
+        # Check if port is in use or already assigned
+        if ! check_port_in_use $PORT && ! is_port_assigned $PORT; then
+            echo $PORT
+            return 0
+        fi
+        PORT=$((PORT + 1))
+    done
+    
+    # If we couldn't find a port, return 0 (error)
+    echo 0
+    return 1
+}
+
+# Suggest a port based on app number
+suggest_port() {
+    local APP_NUM=$1
+    local BASE_PORT=5000
+    local SUGGESTED_PORT=$((BASE_PORT + (APP_NUM - 1) * 100))
+    
+    # Find available port starting from suggested
+    AVAILABLE=$(find_available_port $SUGGESTED_PORT)
+    echo $AVAILABLE
+}
 
 print_header "Multi-App Deployment Setup"
 echo ""
@@ -45,6 +122,9 @@ echo "on one server with your existing Nginx."
 echo ""
 print_info "Each app will have its own domain and Nginx configuration"
 echo ""
+
+# Check for port detection tools
+check_port_detection_tools
 
 # Ask for email (shared across all apps)
 while true; do
@@ -95,19 +175,79 @@ for ((i=1; i<=NUM_APPS; i++)); do
         print_error "Domain cannot be empty"
     done
     
-    # Port
-    while true; do
-        read -p "App $i - Port number (e.g., 5000): " APP_PORT
-        if [[ "$APP_PORT" =~ ^[0-9]+$ ]] && [ "$APP_PORT" -ge 1024 ] && [ "$APP_PORT" -le 65535 ]; then
-            break
+    # Port - Auto-detect and suggest
+    SUGGESTED_PORT=$(suggest_port $i)
+    
+    if [ "$SUGGESTED_PORT" -eq 0 ]; then
+        print_error "Could not find available port automatically"
+        while true; do
+            read -p "App $i - Port number (enter manually): " APP_PORT
+            if [[ "$APP_PORT" =~ ^[0-9]+$ ]] && [ "$APP_PORT" -ge 1024 ] && [ "$APP_PORT" -le 65535 ]; then
+                if is_port_assigned $APP_PORT; then
+                    print_error "Port $APP_PORT already assigned to another app in this session"
+                elif check_port_in_use $APP_PORT; then
+                    print_warning "Port $APP_PORT is already in use"
+                    read -p "Use it anyway? (y/n) " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        # Even if forcing, check for session duplicates
+                        if is_port_assigned $APP_PORT; then
+                            print_error "Port $APP_PORT already assigned to another app in this session"
+                        else
+                            break
+                        fi
+                    fi
+                else
+                    break
+                fi
+            else
+                print_error "Please enter a valid port number (1024-65535)"
+            fi
+        done
+    else
+        echo ""
+        print_success "Suggested available port: $SUGGESTED_PORT"
+        read -p "App $i - Use port $SUGGESTED_PORT or enter custom port [Enter=$SUGGESTED_PORT]: " APP_PORT
+        
+        # If user just pressed Enter, use suggested port
+        if [ -z "$APP_PORT" ]; then
+            APP_PORT=$SUGGESTED_PORT
+        else
+            # Validate custom port
+            while true; do
+                if [[ "$APP_PORT" =~ ^[0-9]+$ ]] && [ "$APP_PORT" -ge 1024 ] && [ "$APP_PORT" -le 65535 ]; then
+                    if is_port_assigned $APP_PORT; then
+                        print_error "Port $APP_PORT already assigned to another app in this session"
+                        read -p "Enter a different port: " APP_PORT
+                    elif check_port_in_use $APP_PORT; then
+                        print_warning "Port $APP_PORT is already in use"
+                        read -p "Use it anyway? (y/n) " -n 1 -r
+                        echo
+                        if [[ $REPLY =~ ^[Yy]$ ]]; then
+                            # Even if forcing, check for session duplicates
+                            if is_port_assigned $APP_PORT; then
+                                print_error "Port $APP_PORT already assigned to another app in this session"
+                                read -p "Enter a different port: " APP_PORT
+                            else
+                                break
+                            fi
+                        fi
+                    else
+                        break
+                    fi
+                else
+                    print_error "Please enter a valid port number (1024-65535)"
+                    read -p "App $i - Port number: " APP_PORT
+                fi
+            done
         fi
-        print_error "Please enter a valid port number (1024-65535)"
-    done
+    fi
     
     # Store configuration
     APP_NAMES+=("$APP_NAME")
     APP_DOMAINS+=("$APP_DOMAIN")
     APP_PORTS+=("$APP_PORT")
+    ASSIGNED_PORTS+=("$APP_PORT")  # Track assigned port
     
     echo ""
     print_success "App $i configured:"
