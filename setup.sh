@@ -39,6 +39,48 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Detect Nginx running in Docker with PUBLICLY exposed ports 80/443
+detect_nginx_docker() {
+    # Check if Docker is available and running
+    if ! command_exists docker || ! docker ps >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    # Find containers with publicly exposed ports 80 or 443 (0.0.0.0 or ::)
+    local ALL_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+    
+    for CONTAINER in $ALL_CONTAINERS; do
+        # Check if container has public port 80 or 443 binding
+        local PORT_BINDINGS=$(docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Ports}}' 2>/dev/null)
+        
+        if echo "$PORT_BINDINGS" | grep -qE '"(80|443)/tcp".*"HostIp":"(0\.0\.0\.0|::)"'; then
+            # Check if it's nginx or proxy related
+            local IMAGE=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null)
+            
+            if echo "$CONTAINER $IMAGE" | grep -iqE "(nginx|proxy)"; then
+                # Found a matching container
+                echo "$CONTAINER"
+                return 0
+            fi
+        fi
+    done
+    
+    return 1
+}
+
+# Check if Nginx container has /etc/letsencrypt mounted
+check_nginx_letsencrypt_mount() {
+    local CONTAINER=$1
+    
+    if [ -z "$CONTAINER" ]; then
+        return 1
+    fi
+    
+    # Check if /etc/letsencrypt is mounted
+    docker inspect "$CONTAINER" 2>/dev/null | grep -q "/etc/letsencrypt" && return 0
+    return 1
+}
+
 # Detect running Docker containers and their ports
 detect_running_containers() {
     print_header "Detecting Running Docker Containers"
@@ -283,6 +325,101 @@ prompt_for_ssl_configuration() {
     
     print_header "SSL/HTTPS Configuration"
     echo ""
+    
+    # Auto-detect Nginx in Docker
+    local DETECTED_NGINX=$(detect_nginx_docker)
+    
+    if [ -n "$DETECTED_NGINX" ]; then
+        print_success "Detected Nginx Docker container: $DETECTED_NGINX"
+        echo ""
+        
+        # Check if /etc/letsencrypt is mounted
+        local HAS_LETSENCRYPT_MOUNT=false
+        if check_nginx_letsencrypt_mount "$DETECTED_NGINX"; then
+            HAS_LETSENCRYPT_MOUNT=true
+        fi
+        
+        echo -e "${GREEN}Automatic SSL Configuration Available!${NC}"
+        echo "  • Your Nginx container is running on ports 80/443"
+        echo "  • ISP Manager will run on port 5000"
+        echo "  • Automated SSL certificate provisioning with Let's Encrypt"
+        echo "  • Automatic Nginx configuration generation"
+        echo ""
+        
+        if [ "$HAS_LETSENCRYPT_MOUNT" = true ]; then
+            print_success "/etc/letsencrypt is already mounted in Nginx container"
+        else
+            print_warning "/etc/letsencrypt is NOT mounted in Nginx container"
+            echo ""
+            echo -e "${YELLOW}Important: Your Nginx container needs this volume mount:${NC}"
+            echo "  -v /etc/letsencrypt:/etc/letsencrypt:ro"
+            echo ""
+            echo "SSL provisioning may fail without this mount."
+            echo "You can still continue - the deployment will guide you if needed."
+        fi
+        
+        echo ""
+        read -p "Use $DETECTED_NGINX for SSL integration? (y/n) " -n 1 -r
+        echo
+        
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_info "Skipping automatic SSL configuration"
+            print_info "You can enable SSL manually later or run setup again"
+            return
+        fi
+        
+        # User confirmed - enable existing_nginx mode
+        USE_EXISTING_NGINX=true
+        
+        # Prompt for required fields
+        echo ""
+        echo -e "${BLUE}Please provide the following information:${NC}"
+        echo ""
+        
+        while true; do
+            read -p "Domain name (e.g., isp.yourcompany.com): " SSL_DOMAIN
+            if [ -n "$SSL_DOMAIN" ]; then
+                break
+            fi
+            print_error "Domain name is required"
+        done
+        
+        while true; do
+            read -p "Email for Let's Encrypt notifications: " SSL_EMAIL
+            if [ -n "$SSL_EMAIL" ] && [[ "$SSL_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+                break
+            fi
+            print_error "Valid email address is required"
+        done
+        
+        # Ask about staging mode
+        echo ""
+        echo -e "${YELLOW}Testing mode (optional):${NC}"
+        echo "Let's Encrypt has rate limits. Use staging mode for testing."
+        echo ""
+        read -p "Use staging mode for testing? (y/n) " -n 1 -r
+        echo
+        
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            SSL_STAGING="true"
+        else
+            SSL_STAGING="false"
+        fi
+        
+        echo ""
+        print_success "SSL will be configured with:"
+        echo "  • Domain: $SSL_DOMAIN"
+        echo "  • Email: $SSL_EMAIL"
+        echo "  • Nginx: $DETECTED_NGINX (existing container)"
+        echo "  • Staging: $SSL_STAGING"
+        echo ""
+        print_info "Run ./deploy.sh to automatically provision SSL certificate!"
+        echo ""
+        
+        return
+    fi
+    
+    # No Nginx detected - show traditional prompt
     echo "Do you want to enable SSL/HTTPS with your own domain?"
     echo ""
     echo -e "${GREEN}Benefits of enabling SSL:${NC}"
