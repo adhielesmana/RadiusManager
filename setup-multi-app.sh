@@ -644,6 +644,57 @@ EOF
 chmod +x "$INSTALL_SCRIPT"
 print_success "Generated: $INSTALL_SCRIPT"
 
+# Update .env file for the first app
+print_header "Updating Environment Configuration"
+
+# Create .env from .env.example if it doesn't exist
+if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+        print_info "Creating .env file from .env.example..."
+        cp .env.example .env
+        print_success ".env file created"
+    else
+        print_error ".env.example not found!"
+        print_warning "Please create .env file manually and set:"
+        echo "  ENABLE_SSL=existing_nginx"
+        echo "  APP_DOMAIN=${APP_DOMAINS[0]}"
+    fi
+fi
+
+# Update SSL configuration in .env
+if [ -f .env ]; then
+    print_info "Configuring SSL mode in .env..."
+    
+    # Update ENABLE_SSL
+    if grep -q "^ENABLE_SSL=" .env; then
+        sed -i 's/^ENABLE_SSL=.*/ENABLE_SSL=existing_nginx/' .env
+    else
+        echo "ENABLE_SSL=existing_nginx" >> .env
+    fi
+    
+    # Update APP_DOMAIN to first app's domain
+    if grep -q "^APP_DOMAIN=" .env; then
+        sed -i "s/^APP_DOMAIN=.*/APP_DOMAIN=${APP_DOMAINS[0]}/" .env
+    else
+        echo "APP_DOMAIN=${APP_DOMAINS[0]}" >> .env
+    fi
+    
+    # Update APP_HOST_PORT to first app's port
+    if grep -q "^APP_HOST_PORT=" .env; then
+        sed -i "s/^APP_HOST_PORT=.*/APP_HOST_PORT=${APP_PORTS[0]}/" .env
+    else
+        echo "APP_HOST_PORT=${APP_PORTS[0]}" >> .env
+    fi
+    
+    print_success "SSL mode configured: existing_nginx"
+    print_success "Domain configured: ${APP_DOMAINS[0]}"
+    print_success "Port configured: ${APP_PORTS[0]}"
+else
+    print_error "Failed to update .env file"
+fi
+
+echo ""
+
 # Generate summary
 print_header "Setup Complete!"
 echo ""
