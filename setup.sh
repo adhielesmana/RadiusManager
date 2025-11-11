@@ -704,7 +704,7 @@ main() {
         echo "  1. Run './deploy.sh' to build and start ISP Manager (backend on port 5000)"
         echo "  2. Run './generate-nginx-config.sh' to get Nginx configuration"
         echo "  3. Add the config to your existing Nginx setup"
-        echo "  4. Restart Nginx: sudo systemctl restart nginx"
+        echo "  4. Restart Nginx: systemctl restart nginx"
         echo "  5. Access the application at https://${SSL_DOMAIN}"
         echo ""
         print_success "✓ Configured for existing Nginx integration!"
@@ -877,7 +877,7 @@ setup_env_file() {
             echo "  1. Run: ./generate-nginx-config.sh"
             echo "  2. Add the generated config to your Nginx"
             echo "  3. Configure SSL certificate for ${SSL_DOMAIN} in your Nginx"
-            echo "  4. Reload Nginx: sudo systemctl reload nginx"
+            echo "  4. Reload Nginx: systemctl reload nginx"
             echo ""
         else
             print_warning "SSL/HTTPS is ENABLED (Docker Nginx)"

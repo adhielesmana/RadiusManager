@@ -486,7 +486,7 @@ server {
     server_name ${APP_DOMAIN};
 
     # SSL certificate paths (update with your actual certificate paths)
-    # If you don't have certificates yet, run: sudo certbot --nginx -d ${APP_DOMAIN}
+    # If you don't have certificates yet, run: certbot --nginx -d ${APP_DOMAIN}
     ssl_certificate /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${APP_DOMAIN}/privkey.pem;
 
@@ -535,58 +535,49 @@ EOF
     print_success "Nginx configuration generated"
     
     # Try to install it automatically
-    if [ -w /etc/nginx/sites-available ] 2>/dev/null || sudo -n true 2>/dev/null; then
-        print_info "Installing Nginx configuration..."
+    print_info "Installing Nginx configuration..."
+    
+    if cp "$CONFIG_FILE" /etc/nginx/sites-available/isp-manager 2>/dev/null; then
+        print_success "Configuration copied to /etc/nginx/sites-available/isp-manager"
         
-        if sudo cp "$CONFIG_FILE" /etc/nginx/sites-available/isp-manager 2>/dev/null; then
-            print_success "Configuration copied to /etc/nginx/sites-available/isp-manager"
-            
-            # Enable site if not already enabled
-            if [ ! -L /etc/nginx/sites-enabled/isp-manager ]; then
-                if sudo ln -s /etc/nginx/sites-available/isp-manager /etc/nginx/sites-enabled/isp-manager 2>/dev/null; then
-                    print_success "Site enabled"
-                fi
-            fi
-            
-            # Test Nginx configuration
-            print_info "Testing Nginx configuration..."
-            if sudo nginx -t 2>/dev/null; then
-                print_success "Nginx configuration is valid"
-                
-                # Reload Nginx
-                print_info "Reloading Nginx..."
-                if sudo systemctl reload nginx 2>/dev/null; then
-                    print_success "✓ Nginx reloaded successfully!"
-                    echo ""
-                    print_success "✓ Nginx is now configured and running!"
-                    print_info "Your ISP Manager is accessible at https://${APP_DOMAIN}"
-                else
-                    print_warning "Could not reload Nginx automatically"
-                    print_info "Please reload manually: sudo systemctl reload nginx"
-                fi
-            else
-                print_warning "Nginx configuration test failed"
-                print_info "Please check the configuration and reload manually"
+        # Enable site if not already enabled
+        if [ ! -L /etc/nginx/sites-enabled/isp-manager ]; then
+            if ln -s /etc/nginx/sites-available/isp-manager /etc/nginx/sites-enabled/isp-manager 2>/dev/null; then
+                print_success "Site enabled"
             fi
         else
-            print_warning "Could not install configuration automatically (permission denied)"
-            print_info "Configuration saved to: $CONFIG_FILE"
-            echo ""
-            print_info "Please run these commands manually:"
-            echo "  sudo cp $CONFIG_FILE /etc/nginx/sites-available/isp-manager"
-            echo "  sudo ln -s /etc/nginx/sites-available/isp-manager /etc/nginx/sites-enabled/"
-            echo "  sudo nginx -t"
-            echo "  sudo systemctl reload nginx"
+            print_info "Site already enabled"
+        fi
+        
+        # Test Nginx configuration
+        print_info "Testing Nginx configuration..."
+        if nginx -t 2>/dev/null; then
+            print_success "Nginx configuration is valid"
+            
+            # Reload Nginx
+            print_info "Reloading Nginx..."
+            if systemctl reload nginx 2>/dev/null; then
+                print_success "✓ Nginx reloaded successfully!"
+                echo ""
+                print_success "✓ Nginx is now configured and running!"
+                print_info "Your ISP Manager is accessible at https://${APP_DOMAIN}"
+            else
+                print_warning "Could not reload Nginx automatically"
+                print_info "Please reload manually: systemctl reload nginx"
+            fi
+        else
+            print_warning "Nginx configuration test failed"
+            print_info "Please check the configuration and reload manually"
         fi
     else
-        print_warning "Cannot install Nginx config automatically (no sudo access)"
+        print_warning "Could not install configuration automatically"
         print_info "Configuration saved to: $CONFIG_FILE"
         echo ""
         print_info "Please run these commands manually:"
-        echo "  sudo cp $CONFIG_FILE /etc/nginx/sites-available/isp-manager"
-        echo "  sudo ln -s /etc/nginx/sites-available/isp-manager /etc/nginx/sites-enabled/"
-        echo "  sudo nginx -t"
-        echo "  sudo systemctl reload nginx"
+        echo "  cp $CONFIG_FILE /etc/nginx/sites-available/isp-manager"
+        echo "  ln -s /etc/nginx/sites-available/isp-manager /etc/nginx/sites-enabled/"
+        echo "  nginx -t"
+        echo "  systemctl reload nginx"
     fi
     
     # Check if SSL certificate exists
@@ -594,7 +585,7 @@ EOF
     if [ ! -f "/etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem" ] 2>/dev/null; then
         print_warning "SSL certificate not found for ${APP_DOMAIN}"
         print_info "To get a free SSL certificate, run:"
-        echo "  sudo certbot --nginx -d ${APP_DOMAIN}"
+        echo "  certbot --nginx -d ${APP_DOMAIN}"
     else
         print_success "SSL certificate found for ${APP_DOMAIN}"
     fi
