@@ -584,8 +584,18 @@ EOF
     echo ""
     if [ ! -f "/etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem" ] 2>/dev/null; then
         print_warning "SSL certificate not found for ${APP_DOMAIN}"
-        print_info "To get a free SSL certificate, run:"
-        echo "  certbot --nginx -d ${APP_DOMAIN}"
+        print_info "Since your Nginx runs in Docker, use webroot mode:"
+        echo ""
+        echo "1. Create webroot directory:"
+        echo "   mkdir -p /var/www/html/.well-known/acme-challenge"
+        echo ""
+        echo "2. Get certificate with webroot mode:"
+        echo "   certbot certonly --webroot -w /var/www/html -d ${APP_DOMAIN} -m ${LETSENCRYPT_EMAIL:-your@email.com} --agree-tos"
+        echo ""
+        echo "3. After getting the certificate, reload your Nginx Docker container"
+        echo ""
+        print_info "Alternative: Use standalone mode (requires temporarily stopping Nginx on port 80):"
+        echo "   certbot certonly --standalone -d ${APP_DOMAIN} -m ${LETSENCRYPT_EMAIL:-your@email.com} --agree-tos"
     else
         print_success "SSL certificate found for ${APP_DOMAIN}"
     fi
