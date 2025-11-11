@@ -39,6 +39,39 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Detect running Docker containers and their ports
+detect_running_containers() {
+    print_header "Detecting Running Docker Containers"
+    
+    if ! command_exists docker; then
+        print_info "Docker not installed yet - skipping container detection"
+        return
+    fi
+    
+    if ! docker ps >/dev/null 2>&1; then
+        print_info "Docker daemon not running - skipping container detection"
+        return
+    fi
+    
+    local CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+    
+    if [ -z "$CONTAINERS" ]; then
+        print_info "No running Docker containers detected"
+        return
+    fi
+    
+    echo ""
+    print_success "Found running Docker containers:"
+    echo ""
+    
+    # Show container details
+    docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}" 2>/dev/null | head -20
+    
+    echo ""
+    print_info "These containers and their ports will be avoided during setup"
+    echo ""
+}
+
 # Show help message
 show_help() {
     echo "ISP Manager - Automated Setup Script"
@@ -477,6 +510,9 @@ main() {
         print_error "Unsupported operating system: $OSTYPE"
         exit 1
     fi
+    
+    # Detect running Docker containers early
+    detect_running_containers
     
     # Check Docker
     print_header "Checking Docker Installation"

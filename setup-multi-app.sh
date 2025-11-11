@@ -126,6 +126,32 @@ echo ""
 # Check for port detection tools
 check_port_detection_tools
 
+# Detect running Docker containers
+print_header "Detecting Running Docker Containers"
+
+if command -v docker >/dev/null 2>&1 && docker ps >/dev/null 2>&1; then
+    CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+    
+    if [ -n "$CONTAINERS" ]; then
+        echo ""
+        print_success "Found running Docker containers:"
+        echo ""
+        
+        # Show container details with name, image, and ports
+        docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}" 2>/dev/null | head -20
+        
+        echo ""
+        print_info "Port suggestions will automatically avoid these containers"
+        echo ""
+    else
+        print_info "No running Docker containers found"
+        echo ""
+    fi
+else
+    print_info "Docker not available or not running - port detection will use system ports only"
+    echo ""
+fi
+
 # Ask for email (shared across all apps)
 while true; do
     read -p "Enter your email for SSL certificates: " SSL_EMAIL
