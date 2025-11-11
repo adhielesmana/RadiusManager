@@ -714,7 +714,63 @@ main() {
     if [ "$SSL_MODE" = "EXISTING_NGINX" ] && [ "$SKIP_SSL" != "true" ]; then
         print_header "Automated SSL Provisioning"
         
-        if [ -x ./ssl-provision.sh ]; then
+        # Check if this is a multi-app setup
+        if [ -d "ssl-commands" ] && [ -x ./ssl-commands/get-all-certificates.sh ]; then
+            print_info "Multi-app SSL setup detected"
+            echo ""
+            
+            # Verify install script exists
+            if [ ! -x ./install-to-nginx.sh ]; then
+                print_error "install-to-nginx.sh not found or not executable"
+                print_info "Please run './setup-multi-app.sh' to regenerate SSL scripts"
+                SSL_PROVISIONED=false
+            else
+                # Step 1: Get SSL certificates for all domains
+                CERTS_OBTAINED=false
+                print_header "Step 1/2: SSL Certificate Provisioning"
+                print_info "Getting certificates for all configured domains..."
+                echo ""
+                
+                if ./ssl-commands/get-all-certificates.sh; then
+                    echo ""
+                    print_success "✓ STEP 1 COMPLETE: All SSL certificates obtained!"
+                    CERTS_OBTAINED=true
+                else
+                    echo ""
+                    print_error "✗ STEP 1 FAILED: Certificate provisioning encountered an issue"
+                    print_info "Manual recovery: ./ssl-commands/get-all-certificates.sh"
+                    CERTS_OBTAINED=false
+                fi
+                
+                echo ""
+                
+                # Step 2: Install Nginx configs to container (only if Step 1 succeeded)
+                if [ "$CERTS_OBTAINED" = "true" ]; then
+                    print_header "Step 2/2: Nginx Configuration Installation"
+                    print_info "Installing configurations and reloading Nginx..."
+                    echo ""
+                    
+                    if ./install-to-nginx.sh; then
+                        echo ""
+                        print_success "✓ STEP 2 COMPLETE: Nginx configurations installed and reloaded!"
+                        SSL_PROVISIONED=true
+                    else
+                        echo ""
+                        print_error "✗ STEP 2 FAILED: Nginx configuration installation failed"
+                        print_warning "Certificates are ready, but configs not installed"
+                        print_info "Manual recovery: ./install-to-nginx.sh"
+                        SSL_PROVISIONED=false
+                    fi
+                else
+                    print_warning "Skipping Step 2/2 (certificate provisioning incomplete)"
+                    print_info "Complete Step 1 first: ./ssl-commands/get-all-certificates.sh"
+                    SSL_PROVISIONED=false
+                fi
+            fi
+            
+        # Single-app setup
+        elif [ -x ./ssl-provision.sh ]; then
+            print_info "Single-app SSL setup detected"
             print_info "Running automated SSL certificate provisioning..."
             
             if ./ssl-provision.sh; then
@@ -726,8 +782,8 @@ main() {
                 SSL_PROVISIONED=false
             fi
         else
-            print_warning "ssl-provision.sh not found or not executable"
-            print_info "Make script executable: chmod +x ssl-provision.sh"
+            print_warning "No SSL provisioning scripts found"
+            print_info "Run './setup.sh' or './setup-multi-app.sh' first to configure SSL"
             SSL_PROVISIONED=false
         fi
         
@@ -754,33 +810,62 @@ main() {
         print_success "ISP Manager backend is running on http://localhost:${APP_HOST_PORT:-5000}"
         echo ""
         
+        # Detect multi-app vs single-app setup
+        MULTI_APP_SETUP=false
+        if [ -d "ssl-commands" ] && [ -x ./ssl-commands/get-all-certificates.sh ]; then
+            MULTI_APP_SETUP=true
+        fi
+        
         if [ "$SSL_PROVISIONED" = "true" ]; then
-            print_success "✓ SSL certificate provisioned and configured!"
+            print_success "✓ SSL certificates provisioned and configured!"
             print_success "✓ Nginx configured and reloaded!"
             echo ""
-            print_info "Your ISP Manager is now accessible at: https://${APP_DOMAIN}"
+            if [ "$MULTI_APP_SETUP" = "true" ]; then
+                print_info "All applications are now accessible via HTTPS"
+                if [ -n "$APP_DOMAIN" ]; then
+                    print_info "This app: https://${APP_DOMAIN}"
+                fi
+            else
+                print_info "Your ISP Manager is now accessible at: https://${APP_DOMAIN}"
+            fi
         elif [ "$SKIP_SSL" = "true" ]; then
             print_info "SSL provisioning skipped (--skip-ssl flag)"
             echo ""
             print_warning "NEXT STEPS:"
-            echo "  1. Run SSL provisioning manually:"
-            echo "     ./ssl-provision.sh"
+            if [ "$MULTI_APP_SETUP" = "true" ]; then
+                echo "  1. Get SSL certificates for all apps:"
+                echo "     ./ssl-commands/get-all-certificates.sh"
+                echo ""
+                echo "  2. Install Nginx configs:"
+                echo "     ./install-to-nginx.sh"
+            else
+                echo "  1. Run SSL provisioning:"
+                echo "     ./ssl-provision.sh"
+            fi
             echo ""
-            print_info "Your ISP Manager will be accessible at: https://${APP_DOMAIN}"
         else
             print_warning "SSL provisioning was not successful or was skipped"
             echo ""
             print_warning "NEXT STEPS:"
-            echo "  1. Run SSL provisioning manually:"
-            echo "     ./ssl-provision.sh"
+            if [ "$MULTI_APP_SETUP" = "true" ]; then
+                echo "  Multi-app setup detected. Run:"
+                echo "  1. Get SSL certificates:"
+                echo "     ./ssl-commands/get-all-certificates.sh"
+                echo ""
+                echo "  2. Install Nginx configs:"
+                echo "     ./install-to-nginx.sh"
+            else
+                echo "  Single-app setup detected. Run:"
+                echo "  1. SSL provisioning:"
+                echo "     ./ssl-provision.sh"
+                echo ""
+                echo "  Or manually:"
+                echo "  - Stop Nginx: docker stop <nginx-container>"
+                echo "  - Get certificate: certbot certonly --standalone -d ${APP_DOMAIN}"
+                echo "  - Start Nginx: docker start <nginx-container>"
+                echo "  - Copy Nginx config to container"
+            fi
             echo ""
-            echo "  Or manually:"
-            echo "  - Stop Nginx: docker stop <nginx-container>"
-            echo "  - Get certificate: certbot certonly --standalone -d ${APP_DOMAIN}"
-            echo "  - Start Nginx: docker start <nginx-container>"
-            echo "  - Copy config from /etc/nginx/sites-available/isp-manager"
-            echo ""
-            print_info "Your ISP Manager will be accessible at: https://${APP_DOMAIN}"
         fi
     else
         print_success "ISP Manager is now running at http://localhost:${APP_HOST_PORT:-5000}"
