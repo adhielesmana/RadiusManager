@@ -49,6 +49,7 @@ show_help() {
     echo "  --domain DOMAIN          Domain name for SSL/HTTPS (e.g., isp.example.com)"
     echo "  --email EMAIL            Email for Let's Encrypt notifications"
     echo "  --staging                Use Let's Encrypt staging server (for testing)"
+    echo "  --existing-nginx         Use existing Nginx (runs ISP Manager on port 5000)"
     echo "  --auto                   Fully automated mode (no prompts)"
     echo "  --help                   Show this help message"
     echo ""
@@ -56,6 +57,7 @@ show_help() {
     echo "  ./setup.sh                                    # Interactive setup"
     echo "  ./setup.sh --auto                            # Fully automated (no prompts)"
     echo "  ./setup.sh --domain isp.example.com --email admin@example.com"
+    echo "  ./setup.sh --domain isp.example.com --email admin@example.com --existing-nginx"
     echo "  ./setup.sh --domain test.example.com --email admin@example.com --staging"
     echo ""
 }
@@ -381,6 +383,8 @@ main() {
     SSL_EMAIL=""
     SSL_STAGING="false"
     AUTO_MODE=false
+    USE_EXISTING_NGINX=false
+    FORCE_EXISTING_NGINX=false
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -394,6 +398,10 @@ main() {
                 ;;
             --staging)
                 SSL_STAGING="true"
+                shift
+                ;;
+            --existing-nginx)
+                FORCE_EXISTING_NGINX=true
                 shift
                 ;;
             --auto)
@@ -423,6 +431,15 @@ main() {
         print_error "Domain is required when using --email"
         print_info "Use: ./setup.sh --domain your-domain.com --email $SSL_EMAIL"
         exit 1
+    fi
+    
+    if [ "$FORCE_EXISTING_NGINX" = true ]; then
+        if [ -z "$SSL_DOMAIN" ] || [ -z "$SSL_EMAIL" ]; then
+            print_error "--existing-nginx requires both --domain and --email"
+            print_info "Use: ./setup.sh --domain your-domain.com --email your@email.com --existing-nginx"
+            exit 1
+        fi
+        USE_EXISTING_NGINX=true
     fi
     
     print_header "ISP Manager - Automated Setup"
@@ -508,56 +525,78 @@ main() {
     # Check for existing Nginx
     print_header "Checking for Existing Web Server"
     EXISTING_NGINX=false
-    USE_EXISTING_NGINX=false
     
     if check_port_in_use 80 || check_port_in_use 443; then
         print_warning "Ports 80 and/or 443 are in use"
         
-        # Check if it's Nginx
-        if command_exists nginx && systemctl is-active --quiet nginx 2>/dev/null; then
-            print_info "Detected system Nginx running"
+        # Check if it's Nginx (multiple detection methods)
+        NGINX_DETECTED=false
+        
+        # Method 1: Check if nginx command exists and is running
+        if command_exists nginx; then
+            if systemctl is-active --quiet nginx 2>/dev/null || pgrep nginx >/dev/null 2>/dev/null; then
+                NGINX_DETECTED=true
+            fi
+        fi
+        
+        # Method 2: Check Docker nginx containers
+        if ! $NGINX_DETECTED && command_exists docker; then
+            if docker ps --format '{{.Names}}' | grep -i nginx >/dev/null 2>&1; then
+                NGINX_DETECTED=true
+            fi
+        fi
+        
+        if $NGINX_DETECTED; then
+            print_info "Detected Nginx running on ports 80/443"
             EXISTING_NGINX=true
             
             if [ -n "$SSL_DOMAIN" ]; then
-                if [ "$AUTO_MODE" = true ]; then
-                    # In auto mode, use existing Nginx
+                if [ "$AUTO_MODE" = true ] || [ "$FORCE_EXISTING_NGINX" = true ]; then
+                    # In auto mode or when --existing-nginx flag is used
                     USE_EXISTING_NGINX=true
-                    print_success "Will integrate with existing Nginx (auto mode)"
+                    print_success "✓ Will integrate with existing Nginx"
+                    print_info "ISP Manager will run on port 5000 (backend)"
+                    print_info "Add the generated Nginx config to your existing setup"
                 else
                     echo ""
-                    print_warning "SSL mode requested, but ports 80/443 are already in use by Nginx"
-                    print_info "ISP Manager can integrate with your existing Nginx!"
+                    print_success "Good news! ISP Manager can work with your existing Nginx!"
                     echo ""
-                    echo "Options:"
-                    echo "  1. Use existing Nginx (Recommended) - ISP Manager runs on port 5000"
-                    echo "     We'll generate Nginx config for you to add to your existing setup"
-                    echo ""
-                    echo "  2. Skip SSL - Run ISP Manager standalone on port 5000"
+                    echo "How it works:"
+                    echo "  • ISP Manager runs on port 5000 (backend only)"
+                    echo "  • Your existing Nginx proxies to it on port 443"
+                    echo "  • We'll generate the Nginx config for you"
                     echo ""
                     read -p "Use existing Nginx? (y/n) " -n 1 -r
                     echo ""
                     if [[ $REPLY =~ ^[Yy]$ ]]; then
                         USE_EXISTING_NGINX=true
-                        print_success "Will configure for existing Nginx integration"
+                        print_success "✓ Will configure for existing Nginx integration"
                     else
                         SSL_DOMAIN=""
                         SSL_EMAIL=""
                         SSL_STAGING="false"
-                        print_info "SSL disabled - will run on port 5000"
+                        print_info "SSL disabled - will run in local mode on port 5000"
                     fi
                 fi
             fi
         else
-            print_warning "Another web server is using ports 80/443"
+            print_warning "Another web server (not Nginx) is using ports 80/443"
             if [ -n "$SSL_DOMAIN" ]; then
-                if [ "$AUTO_MODE" = true ]; then
-                    print_warning "Cannot use SSL in auto mode - ports unavailable"
-                    SSL_DOMAIN=""
-                    SSL_EMAIL=""
-                    SSL_STAGING="false"
+                print_error "Cannot use SSL mode - ports 80/443 are required but unavailable"
+                print_info "Please free ports 80/443 or use existing Nginx"
+                if [ "$AUTO_MODE" = false ]; then
+                    read -p "Continue without SSL? (y/n) " -n 1 -r
+                    echo ""
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        SSL_DOMAIN=""
+                        SSL_EMAIL=""
+                        SSL_STAGING="false"
+                        print_info "Will configure for local mode on port 5000"
+                    else
+                        print_error "Setup aborted. Free ports 80/443 and run setup again."
+                        exit 1
+                    fi
                 else
-                    print_error "Cannot use SSL mode - ports 80/443 are required"
-                    print_info "Will configure for local mode on port 5000"
                     SSL_DOMAIN=""
                     SSL_EMAIL=""
                     SSL_STAGING="false"
@@ -661,7 +700,16 @@ main() {
     
     print_info "Next steps:"
     
-    if [ -n "$SSL_DOMAIN" ]; then
+    if [ "$USE_EXISTING_NGINX" = true ]; then
+        echo "  1. Run './deploy.sh' to build and start ISP Manager (backend on port 5000)"
+        echo "  2. Run './generate-nginx-config.sh' to get Nginx configuration"
+        echo "  3. Add the config to your existing Nginx setup"
+        echo "  4. Restart Nginx: sudo systemctl restart nginx"
+        echo "  5. Access the application at https://${SSL_DOMAIN}"
+        echo ""
+        print_success "✓ Configured for existing Nginx integration!"
+        print_info "ISP Manager will run on port 5000, your Nginx will proxy to it"
+    elif [ -n "$SSL_DOMAIN" ]; then
         echo "  1. Ensure DNS for ${SSL_DOMAIN} points to this server"
         echo "  2. Run './deploy.sh' to build and start the application"
         echo "  3. Access the application at https://${SSL_DOMAIN}"
