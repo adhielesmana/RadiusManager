@@ -239,6 +239,141 @@ update_env_port() {
     fi
 }
 
+# Interactive SSL configuration prompt
+prompt_for_ssl_configuration() {
+    # Only prompt if not in auto mode and no --domain flag provided
+    if [ "$AUTO_MODE" = true ] || [ -n "$SSL_DOMAIN" ]; then
+        return
+    fi
+    
+    print_header "SSL/HTTPS Configuration"
+    echo ""
+    echo "Do you want to enable SSL/HTTPS with your own domain?"
+    echo ""
+    echo -e "${GREEN}Benefits of enabling SSL:${NC}"
+    echo "  • Secure HTTPS connection with Let's Encrypt certificate"
+    echo "  • Automatic certificate renewal"
+    echo "  • Professional custom domain (e.g., https://isp.yourcompany.com)"
+    echo ""
+    echo -e "${YELLOW}Requirements:${NC}"
+    echo "  • A domain name that you own"
+    echo "  • DNS A record pointing to this server's IP"
+    echo "  • Ports 80 and 443 must be available"
+    echo ""
+    echo -e "${BLUE}Note:${NC} You can also run without SSL for local development (http://localhost:5000)"
+    echo ""
+    
+    read -p "Enable SSL/HTTPS? (y/n) " -n 1 -r
+    echo
+    echo ""
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Check if ports 80/443 are available before asking for domain
+        if check_port_in_use 80 || check_port_in_use 443; then
+            print_warning "Ports 80 and/or 443 are currently in use"
+            
+            # Check if it's Nginx
+            if command_exists nginx && systemctl is-active --quiet nginx 2>/dev/null; then
+                print_info "Detected system Nginx running on ports 80/443"
+                echo ""
+                echo "ISP Manager can integrate with your existing Nginx!"
+                echo "We'll run on port 5000 and generate Nginx config for you."
+                echo ""
+                read -p "Use existing Nginx? (y/n) " -n 1 -r
+                echo
+                
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    USE_EXISTING_NGINX=true
+                else
+                    print_info "SSL disabled - will run in local mode on port 5000"
+                    return
+                fi
+            else
+                print_error "Cannot enable SSL - ports 80/443 are required but in use"
+                print_info "Will run in local mode on port 5000"
+                return
+            fi
+        fi
+        
+        # Prompt for domain
+        while true; do
+            read -p "Enter your domain name (e.g., isp.yourcompany.com): " SSL_DOMAIN
+            if [ -n "$SSL_DOMAIN" ]; then
+                break
+            fi
+            print_error "Domain name cannot be empty"
+        done
+        
+        # Prompt for email
+        while true; do
+            read -p "Enter your email for Let's Encrypt notifications: " SSL_EMAIL
+            if [ -n "$SSL_EMAIL" ]; then
+                break
+            fi
+            print_error "Email address cannot be empty"
+        done
+        
+        # Prompt for staging mode
+        echo ""
+        echo -e "${YELLOW}Testing mode (optional):${NC}"
+        echo "Let's Encrypt has rate limits. Use staging mode for testing."
+        echo "Staging certificates won't be trusted by browsers, but perfect for testing."
+        echo ""
+        read -p "Use staging mode for testing? (y/n) " -n 1 -r
+        echo
+        
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            SSL_STAGING="true"
+        else
+            SSL_STAGING="false"
+        fi
+        
+        echo ""
+        print_success "SSL configuration saved!"
+        print_info "Domain: $SSL_DOMAIN"
+        print_info "Email:  $SSL_EMAIL"
+        print_info "Staging: $SSL_STAGING"
+        echo ""
+    else
+        print_info "SSL disabled - will run in local development mode"
+    fi
+}
+
+# Apply SSL settings to .env file
+apply_ssl_settings_to_env() {
+    if [ ! -f .env ]; then
+        return
+    fi
+    
+    if [ -n "$SSL_DOMAIN" ]; then
+        print_info "Applying SSL configuration to .env file..."
+        
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            if [ "$USE_EXISTING_NGINX" = true ]; then
+                sed -i '' "s/^ENABLE_SSL=.*/ENABLE_SSL=existing_nginx/" .env
+            else
+                sed -i '' "s/^ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            fi
+            sed -i '' "s/^APP_DOMAIN=.*/APP_DOMAIN=$SSL_DOMAIN/" .env
+            sed -i '' "s/^LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$SSL_EMAIL/" .env
+            sed -i '' "s/^LE_STAGING=.*/LE_STAGING=$SSL_STAGING/" .env
+        else
+            # Linux
+            if [ "$USE_EXISTING_NGINX" = true ]; then
+                sed -i "s/^ENABLE_SSL=.*/ENABLE_SSL=existing_nginx/" .env
+            else
+                sed -i "s/^ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+            fi
+            sed -i "s/^APP_DOMAIN=.*/APP_DOMAIN=$SSL_DOMAIN/" .env
+            sed -i "s/^LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$SSL_EMAIL/" .env
+            sed -i "s/^LE_STAGING=.*/LE_STAGING=$SSL_STAGING/" .env
+        fi
+        
+        print_success "SSL settings applied to .env"
+    fi
+}
+
 # Main setup function
 main() {
     # Parse command line arguments
@@ -309,6 +444,9 @@ main() {
         print_info "SSL Mode: DISABLED (Local development)"
     fi
     echo ""
+    
+    # Prompt for SSL configuration if interactive and no CLI flags provided
+    prompt_for_ssl_configuration
     
     # Check operating system
     print_info "Detecting operating system..."
@@ -446,6 +584,9 @@ main() {
     else
         setup_env_file
     fi
+    
+    # Apply SSL settings to .env (whether newly created or existing)
+    apply_ssl_settings_to_env
     
     # Automatic port conflict resolution
     auto_resolve_ports
