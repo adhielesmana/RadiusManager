@@ -505,10 +505,30 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
 fi
 
-# Find nginx container
-NGINX_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i nginx | head -n 1)
+# Robust Nginx container detection (public ports 80/443)
+echo "Detecting Nginx container..."
+NGINX_CONTAINER=""
+ALL_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+
+for CONTAINER in $ALL_CONTAINERS; do
+    # Check if container has public port 80 or 443 binding
+    PORT_BINDINGS=$(docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Ports}}' 2>/dev/null)
+    
+    if echo "$PORT_BINDINGS" | grep -qE '"(80|443)/tcp".*"HostIp":"(0\.0\.0\.0|::)"'; then
+        # Check if it's nginx or proxy related
+        IMAGE=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null)
+        
+        if echo "$CONTAINER $IMAGE" | grep -iqE "(nginx|proxy)"; then
+            NGINX_CONTAINER="$CONTAINER"
+            break
+        fi
+    fi
+done
+
 if [ -z "$NGINX_CONTAINER" ]; then
-    echo "Error: Could not find nginx container"
+    echo "Error: Could not find nginx container with public ports 80/443"
+    echo "Make sure your Nginx container is running with ports exposed:"
+    echo "  docker run -p 80:80 -p 443:443 ..."
     exit 1
 fi
 
@@ -557,10 +577,30 @@ echo "Installing Nginx Configurations"
 echo "================================================"
 echo ""
 
-# Find nginx container
-NGINX_CONTAINER=$(docker ps --format '{{.Names}}' | grep -i nginx | head -n 1)
+# Robust Nginx container detection (public ports 80/443)
+echo "Detecting Nginx container..."
+NGINX_CONTAINER=""
+ALL_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+
+for CONTAINER in $ALL_CONTAINERS; do
+    # Check if container has public port 80 or 443 binding
+    PORT_BINDINGS=$(docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Ports}}' 2>/dev/null)
+    
+    if echo "$PORT_BINDINGS" | grep -qE '"(80|443)/tcp".*"HostIp":"(0\.0\.0\.0|::)"'; then
+        # Check if it's nginx or proxy related
+        IMAGE=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null)
+        
+        if echo "$CONTAINER $IMAGE" | grep -iqE "(nginx|proxy)"; then
+            NGINX_CONTAINER="$CONTAINER"
+            break
+        fi
+    fi
+done
+
 if [ -z "$NGINX_CONTAINER" ]; then
-    echo "Error: Could not find nginx container"
+    echo "Error: Could not find nginx container with public ports 80/443"
+    echo "Make sure your Nginx container is running with ports exposed:"
+    echo "  docker run -p 80:80 -p 443:443 ..."
     exit 1
 fi
 
