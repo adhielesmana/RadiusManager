@@ -84,6 +84,7 @@ check_nginx_letsencrypt_mount() {
 declare -a APP_NAMES
 declare -a APP_DOMAINS
 declare -a APP_PORTS
+declare -a APP_CONTAINERS  # Store actual container names for proxy_pass
 declare -a ASSIGNED_PORTS  # Track ports assigned in this session
 
 # Check if port detection tools are available
@@ -162,6 +163,164 @@ suggest_port() {
     echo $AVAILABLE
 }
 
+# Auto-detect existing Docker containers with web applications
+detect_existing_apps() {
+    print_header "Auto-Detecting Existing Docker Applications"
+    echo ""
+    
+    # Check if Docker is available
+    if ! command_exists docker || ! docker ps >/dev/null 2>&1; then
+        print_info "Docker not available - skipping auto-detection"
+        echo ""
+        echo 0
+        return 0
+    fi
+    
+    # Arrays to store detected apps
+    declare -a DETECTED_NAMES
+    declare -a DETECTED_PORTS
+    declare -a DETECTED_DOMAINS
+    declare -a DETECTED_CONTAINERS
+    
+    # Get all running containers (disable exit on error temporarily)
+    set +e
+    local ALL_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+    set -e
+    
+    if [ -z "$ALL_CONTAINERS" ]; then
+        print_info "No running Docker containers found"
+        echo ""
+        echo 0
+        return 0
+    fi
+    
+    local COUNT=0
+    local SKIPPED_COUNT=0
+    declare -a SKIPPED_CONTAINERS
+    
+    # Detect nginx container once (cache for performance)
+    set +e
+    local NGINX_CONTAINER=$(detect_nginx_docker)
+    set -e
+    
+    for CONTAINER in $ALL_CONTAINERS; do
+        # Skip nginx/proxy containers
+        if echo "$CONTAINER" | grep -iqE "(nginx|proxy)"; then
+            continue
+        fi
+        
+        # Get container ports (disable exit on error)
+        set +e
+        local PORT_BINDINGS=$(docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Ports}}' 2>/dev/null)
+        set -e
+        
+        # Extract mapped port - try multiple patterns
+        local MAPPED_PORT=""
+        
+        # Pattern 1: Standard port mapping with HostPort (any IP binding)
+        MAPPED_PORT=$(echo "$PORT_BINDINGS" | grep -oP 'HostPort":"\K\d+' | head -1)
+        
+        # Pattern 2: Try docker port command - match ANY IP binding (0.0.0.0, 127.0.0.1, ::, etc)
+        if [ -z "$MAPPED_PORT" ]; then
+            set +e
+            # Match any IP:PORT pattern, extract PORT
+            MAPPED_PORT=$(docker port "$CONTAINER" 2>/dev/null | grep -oP ':\K\d+' | head -1)
+            set -e
+        fi
+        
+        # Pattern 3: Try internal ports (for host network mode)
+        if [ -z "$MAPPED_PORT" ]; then
+            set +e
+            MAPPED_PORT=$(docker inspect "$CONTAINER" --format '{{range $p, $conf := .Config.ExposedPorts}}{{$p}}{{end}}' 2>/dev/null | grep -oP '^\d+' | head -1)
+            set -e
+        fi
+        
+        if [ -n "$MAPPED_PORT" ]; then
+            # Extract app name from container name (remove common suffixes)
+            local APP_NAME=$(echo "$CONTAINER" | sed 's/-app$//' | sed 's/-container$//' | sed 's/-web$//')
+            
+            # Try to find domain from existing nginx configs
+            local DOMAIN=""
+            
+            if [ -n "$NGINX_CONTAINER" ]; then
+                # Try to find server_name matching this container
+                # Use || true to prevent exit on grep no-match
+                set +e
+                DOMAIN=$(docker exec "$NGINX_CONTAINER" grep -r "proxy_pass.*$CONTAINER" /etc/nginx/conf.d/ 2>/dev/null | \
+                         grep -oP 'server_name\s+\K[^;]+' 2>/dev/null | tr -d ' ' | head -1 || true)
+                set -e
+            fi
+            
+            # If no domain found, generate one from app name
+            if [ -z "$DOMAIN" ]; then
+                DOMAIN="${APP_NAME}.example.com"
+            fi
+            
+            DETECTED_NAMES[$COUNT]="$APP_NAME"
+            DETECTED_PORTS[$COUNT]="$MAPPED_PORT"
+            DETECTED_DOMAINS[$COUNT]="$DOMAIN"
+            DETECTED_CONTAINERS[$COUNT]="$CONTAINER"  # Store actual container name
+            
+            COUNT=$((COUNT + 1))
+        else
+            # Track containers that couldn't be mapped
+            SKIPPED_CONTAINERS[$SKIPPED_COUNT]="$CONTAINER"
+            SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+        fi
+    done
+    
+    # Report skipped containers if any
+    if [ $SKIPPED_COUNT -gt 0 ]; then
+        echo ""
+        print_warning "Skipped $SKIPPED_COUNT container(s) - no accessible ports detected:"
+        for SKIPPED in "${SKIPPED_CONTAINERS[@]}"; do
+            echo "  - $SKIPPED"
+        done
+        echo ""
+        print_info "These containers may be:"
+        echo "  • Internal services without exposed ports"
+        echo "  • Using custom network configurations"
+        echo "  • Not web applications"
+        echo ""
+    fi
+    
+    # Display detected apps
+    if [ $COUNT -gt 0 ]; then
+        print_success "Found $COUNT existing application(s):"
+        echo ""
+        for ((i=0; i<COUNT; i++)); do
+            echo "  $((i+1)). ${DETECTED_NAMES[$i]}"
+            echo "     Container: ${DETECTED_CONTAINERS[$i]}"
+            echo "     Port: ${DETECTED_PORTS[$i]}"
+            echo "     Domain: ${DETECTED_DOMAINS[$i]}"
+            echo ""
+        done
+        
+        read -p "Use these detected apps? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Copy detected apps to main arrays
+            for ((i=0; i<COUNT; i++)); do
+                APP_NAMES[$i]="${DETECTED_NAMES[$i]}"
+                APP_PORTS[$i]="${DETECTED_PORTS[$i]}"
+                APP_DOMAINS[$i]="${DETECTED_DOMAINS[$i]}"
+                APP_CONTAINERS[$i]="${DETECTED_CONTAINERS[$i]}"  # Store actual container name
+                ASSIGNED_PORTS[$i]="${DETECTED_PORTS[$i]}"
+            done
+            
+            # Return count of detected apps
+            echo $COUNT
+            return 0
+        fi
+    else
+        print_info "No web applications detected (looking for containers with exposed ports)"
+        echo ""
+    fi
+    
+    echo 0
+    return 0
+}
+
 print_header "Multi-App Deployment Setup"
 echo ""
 echo "This script will help you configure multiple applications"
@@ -172,6 +331,9 @@ echo ""
 
 # Check for port detection tools
 check_port_detection_tools
+
+# Auto-detect existing apps
+DETECTED_COUNT=$(detect_existing_apps)
 
 # Auto-detect Nginx in Docker
 print_header "Nginx Detection"
@@ -253,27 +415,46 @@ done
 
 echo ""
 
-# Ask how many apps
-while true; do
-    read -p "How many applications do you want to configure? (1-10): " NUM_APPS
-    if [[ "$NUM_APPS" =~ ^[0-9]+$ ]] && [ "$NUM_APPS" -ge 1 ] && [ "$NUM_APPS" -le 10 ]; then
-        break
+# Ask how many ADDITIONAL apps (if any were detected)
+if [ "$DETECTED_COUNT" -gt 0 ]; then
+    echo ""
+    print_info "Already detected: $DETECTED_COUNT application(s)"
+    read -p "How many ADDITIONAL applications to configure? (0-$((10-DETECTED_COUNT))): " ADDITIONAL_APPS
+    
+    if [[ ! "$ADDITIONAL_APPS" =~ ^[0-9]+$ ]] || [ "$ADDITIONAL_APPS" -lt 0 ] || [ "$ADDITIONAL_APPS" -gt $((10-DETECTED_COUNT)) ]; then
+        ADDITIONAL_APPS=0
+        print_warning "Invalid input, configuring 0 additional apps"
     fi
-    print_error "Please enter a number between 1 and 10"
-done
+    
+    NUM_APPS=$((DETECTED_COUNT + ADDITIONAL_APPS))
+    
+    echo ""
+    print_success "Total: $NUM_APPS application(s) ($DETECTED_COUNT detected + $ADDITIONAL_APPS new)"
+    echo ""
+else
+    # No apps detected, ask for total
+    while true; do
+        read -p "How many applications do you want to configure? (1-10): " NUM_APPS
+        if [[ "$NUM_APPS" =~ ^[0-9]+$ ]] && [ "$NUM_APPS" -ge 1 ] && [ "$NUM_APPS" -le 10 ]; then
+            break
+        fi
+        print_error "Please enter a number between 1 and 10"
+    done
+    
+    echo ""
+    print_success "Configuring $NUM_APPS application(s)"
+    echo ""
+fi
 
-echo ""
-print_success "Configuring $NUM_APPS application(s)"
-echo ""
-
-# Collect information for each app
-for ((i=1; i<=NUM_APPS; i++)); do
-    print_header "Application $i of $NUM_APPS"
+# Collect information for ADDITIONAL apps only (detected apps already configured)
+for ((i=$DETECTED_COUNT; i<NUM_APPS; i++)); do
+    APP_NUM=$((i+1))
+    print_header "Application $APP_NUM of $NUM_APPS"
     echo ""
     
     # App name
     while true; do
-        read -p "App $i - Name/Identifier (e.g., isp-manager, monitoring): " APP_NAME
+        read -p "App $APP_NUM - Name/Identifier (e.g., isp-manager, monitoring): " APP_NAME
         if [ -n "$APP_NAME" ]; then
             # Sanitize app name (lowercase, no spaces)
             APP_NAME=$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
@@ -284,7 +465,7 @@ for ((i=1; i<=NUM_APPS; i++)); do
     
     # Domain
     while true; do
-        read -p "App $i - Domain name (e.g., isp.maxnetplus.id): " APP_DOMAIN
+        read -p "App $APP_NUM - Domain name (e.g., isp.maxnetplus.id): " APP_DOMAIN
         if [ -n "$APP_DOMAIN" ]; then
             break
         fi
@@ -292,7 +473,7 @@ for ((i=1; i<=NUM_APPS; i++)); do
     done
     
     # Port - Auto-detect and suggest
-    SUGGESTED_PORT=$(suggest_port $i)
+    SUGGESTED_PORT=$(suggest_port $APP_NUM)
     
     if [ "$SUGGESTED_PORT" -eq 0 ]; then
         print_error "Could not find available port automatically"
@@ -363,6 +544,7 @@ for ((i=1; i<=NUM_APPS; i++)); do
     APP_NAMES+=("$APP_NAME")
     APP_DOMAINS+=("$APP_DOMAIN")
     APP_PORTS+=("$APP_PORT")
+    APP_CONTAINERS+=("")  # Empty for manually added apps (use conventional naming)
     ASSIGNED_PORTS+=("$APP_PORT")  # Track assigned port
     
     echo ""
@@ -404,6 +586,21 @@ for ((i=0; i<NUM_APPS; i++)); do
     APP_DOMAIN="${APP_DOMAINS[$i]}"
     APP_PORT="${APP_PORTS[$i]}"
     
+    # Both detected and manual apps proxy to host port
+    # Note: host.docker.internal works on Docker Desktop (Mac/Windows)
+    # On Linux, nginx container needs: --add-host=host.docker.internal:host-gateway
+    # Or use docker run --network=host for nginx
+    
+    if [ -n "${APP_CONTAINERS[$i]}" ]; then
+        # Detected app
+        PROXY_TARGET="host.docker.internal:${APP_PORT}"
+        PROXY_NOTE="Detected container: ${APP_CONTAINERS[$i]} (accessible via host port ${APP_PORT})"
+    else
+        # Manual app - will be run with -p ${APP_PORT}:5000
+        PROXY_TARGET="host.docker.internal:${APP_PORT}"
+        PROXY_NOTE="Expected: docker run -p ${APP_PORT}:5000 --name ${APP_NAME}-app ..."
+    fi
+    
     CONFIG_FILE="nginx-configs/${APP_NAME}.conf"
     
     print_info "Generating config for $APP_NAME..."
@@ -412,6 +609,7 @@ for ((i=0; i<NUM_APPS; i++)); do
 # ${APP_NAME} - Nginx Configuration
 # Domain: ${APP_DOMAIN}
 # Port: ${APP_PORT}
+# ${PROXY_NOTE}
 
 # HTTP to HTTPS redirect
 server {
@@ -458,7 +656,7 @@ server {
 
     # Proxy to backend
     location / {
-        proxy_pass http://${APP_NAME}-app:5000;
+        proxy_pass http://${PROXY_TARGET};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';

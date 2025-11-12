@@ -24,12 +24,19 @@ Key features and design decisions include:
 - **FTTH Infrastructure Management**: Hierarchical system for POPs, OLTs, PON Ports, Distribution Boxes, and ONUs, including GPS tracking, capacity planning, and vendor-specific OLT configurations (ZTE C320 GPON, HIOSO EPON). Includes an interactive Leaflet map for coverage visualization. All FTTH management pages feature both read-only detail view and edit capabilities, with dedicated detail dialogs showing comprehensive information about each infrastructure component.
 - **Router/NAS Management**: CRUD operations for Network Access Servers (routers) with secure RADIUS secret management and type validation (MikroTik, Cisco, Ubiquiti, Other).
 - **Deployment**: Designed for Docker Compose orchestration of PostgreSQL, FreeRADIUS, and the ISP Manager application. Supports flexible Nginx integration with **zero-configuration multi-app deployment**:
+  - **Automatic Docker Container Detection**: 
+    - Scans all running Docker containers and detects exposed ports (any IP binding)
+    - Extracts actual container names and port mappings
+    - Finds domains from existing nginx configs
+    - Reports skipped containers with explanations
+    - Zero manual typing for existing containers
   - **Automatic Network Connection**: Auto-detects existing nginx containers and connects isp-manager-app to shared networks
   - **Intelligent SSL Certificate Management**: 
     - Checks existing certificate validity on host (>30 days = skip provisioning)
     - Auto-renews certificates expiring in <30 days
     - Only provisions new certificates when missing
     - Automatically copies certificates from host into nginx container
+    - Shows certificate expiry dates for transparency
   - **Nginx Config Patching**: Intelligently fixes nginx.conf to comment out global SSL directives while preserving per-domain certificates
   - **Multi-App SSL Provisioning**: Generates and installs SSL certificates for multiple domains via Let's Encrypt
   - **Smart Detection**: Identifies nginx containers by public port exposure (80/443) and validates connectivity
