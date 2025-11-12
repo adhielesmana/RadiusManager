@@ -495,6 +495,25 @@ echo "================================================"
 echo "Getting SSL Certificates for All Apps"
 echo "================================================"
 echo ""
+
+# Check prerequisites
+echo "Checking prerequisites..."
+if ! command -v openssl &> /dev/null; then
+    echo "Error: openssl is not installed"
+    echo "Install it with: apt-get install openssl (Ubuntu/Debian) or yum install openssl (CentOS/RHEL)"
+    exit 1
+fi
+
+if [ ! -w /etc/letsencrypt ] 2>/dev/null && [ ! -e /etc/letsencrypt ]; then
+    echo "Error: This script must be run with root/sudo permissions"
+    echo "It needs to access /etc/letsencrypt"
+    echo "Please run: sudo $0"
+    exit 1
+fi
+
+echo "✓ All prerequisites met"
+echo ""
+
 echo "This will temporarily stop Nginx to obtain certificates"
 echo "using standalone mode (about 30 seconds downtime per domain)."
 echo ""
@@ -543,26 +562,58 @@ for ((i=0; i<NUM_APPS; i++)); do
     APP_DOMAIN="${APP_DOMAINS[$i]}"
     
     cat >> "$SSL_SCRIPT" << EOF
-echo "Getting certificate for ${APP_DOMAIN}..."
+echo "================================================"
+echo "Processing certificate for ${APP_DOMAIN}..."
+echo "================================================"
 
-# Check if certificate already exists and is valid
-if docker exec \$NGINX_CONTAINER test -f /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem 2>/dev/null; then
-    echo "Certificate already exists for ${APP_DOMAIN}, checking validity..."
-    if docker exec \$NGINX_CONTAINER openssl x509 -checkend 2592000 -noout -in /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem 2>/dev/null; then
-        echo "✓ Existing certificate is valid (>30 days), skipping"
+# Check if certificate exists on HOST first (more reliable than checking in container)
+if [ -f /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem ]; then
+    echo "Certificate found on host for ${APP_DOMAIN}"
+    
+    # Get certificate expiry date for display
+    CERT_EXPIRY=\$(openssl x509 -enddate -noout -in /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem 2>/dev/null | cut -d= -f2)
+    echo "Current expiry: \$CERT_EXPIRY"
+    
+    # Check if certificate is valid for at least 30 days
+    if openssl x509 -checkend 2592000 -noout -in /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem 2>/dev/null; then
+        echo "✓ Certificate is valid (expires in >30 days)"
+        echo "✓ Skipping certificate provisioning for ${APP_DOMAIN}"
         echo ""
     else
-        echo "Certificate exists but expiring soon, renewing..."
-        docker exec \$NGINX_CONTAINER certbot renew --cert-name ${APP_DOMAIN}
+        echo "⚠ Certificate expires in <30 days"
+        echo "Renewing certificate..."
+        
+        # Stop nginx and renew using standalone mode
+        docker stop \$NGINX_CONTAINER
+        docker run --rm -p 80:80 -p 443:443 -v /etc/letsencrypt:/etc/letsencrypt certbot/certbot renew --cert-name ${APP_DOMAIN} --force-renewal --non-interactive
+        docker start \$NGINX_CONTAINER
+        
+        # Get new expiry date
+        NEW_CERT_EXPIRY=\$(openssl x509 -enddate -noout -in /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem 2>/dev/null | cut -d= -f2)
         echo "✓ Certificate renewed for ${APP_DOMAIN}"
+        echo "New expiry: \$NEW_CERT_EXPIRY"
         echo ""
     fi
 else
-    echo "No existing certificate, obtaining new one..."
+    echo "No certificate found for ${APP_DOMAIN}"
+    echo "Obtaining new certificate from Let's Encrypt..."
+    
+    # Stop nginx to free up port 80/443 for standalone mode
     docker stop \$NGINX_CONTAINER
+    
+    # Obtain certificate using certbot Docker container
     docker run --rm -p 80:80 -p 443:443 -v /etc/letsencrypt:/etc/letsencrypt certbot/certbot certonly --standalone -d ${APP_DOMAIN} -m ${SSL_EMAIL} --agree-tos --non-interactive
+    
+    # Start nginx again
     docker start \$NGINX_CONTAINER
-    echo "✓ Certificate obtained for ${APP_DOMAIN}"
+    
+    # Verify certificate was obtained
+    if [ -f /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem ]; then
+        echo "✓ Certificate successfully obtained for ${APP_DOMAIN}"
+    else
+        echo "✗ Failed to obtain certificate for ${APP_DOMAIN}"
+        echo "Please check DNS records and try again"
+    fi
     echo ""
 fi
 

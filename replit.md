@@ -25,7 +25,11 @@ Key features and design decisions include:
 - **Router/NAS Management**: CRUD operations for Network Access Servers (routers) with secure RADIUS secret management and type validation (MikroTik, Cisco, Ubiquiti, Other).
 - **Deployment**: Designed for Docker Compose orchestration of PostgreSQL, FreeRADIUS, and the ISP Manager application. Supports flexible Nginx integration with **zero-configuration multi-app deployment**:
   - **Automatic Network Connection**: Auto-detects existing nginx containers and connects isp-manager-app to shared networks
-  - **SSL Certificate Management**: Automatically copies certificates from host into nginx container
+  - **Intelligent SSL Certificate Management**: 
+    - Checks existing certificate validity on host (>30 days = skip provisioning)
+    - Auto-renews certificates expiring in <30 days
+    - Only provisions new certificates when missing
+    - Automatically copies certificates from host into nginx container
   - **Nginx Config Patching**: Intelligently fixes nginx.conf to comment out global SSL directives while preserving per-domain certificates
   - **Multi-App SSL Provisioning**: Generates and installs SSL certificates for multiple domains via Let's Encrypt
   - **Smart Detection**: Identifies nginx containers by public port exposure (80/443) and validates connectivity
