@@ -425,6 +425,93 @@ wait_for_services() {
     fi
 }
 
+# Connect to existing nginx network if detected
+connect_to_nginx_network() {
+    print_header "Connecting to Existing Nginx Network"
+    
+    # Only do this for existing_nginx mode
+    if [ "$SSL_MODE" != "EXISTING_NGINX" ]; then
+        print_info "Not in existing_nginx mode, skipping network connection"
+        return 0
+    fi
+    
+    # Get the actual app container name using docker compose
+    local APP_CONTAINER=$(docker compose $COMPOSE_FILES ps -q app 2>/dev/null)
+    if [ -z "$APP_CONTAINER" ]; then
+        print_error "Could not find app container"
+        return 1
+    fi
+    
+    # Get the actual container name from the ID
+    APP_CONTAINER=$(docker inspect "$APP_CONTAINER" --format '{{.Name}}' 2>/dev/null | sed 's/^\/\///')
+    
+    if [ -z "$APP_CONTAINER" ]; then
+        print_error "Could not determine app container name"
+        return 1
+    fi
+    
+    print_success "App container: $APP_CONTAINER"
+    
+    # Detect nginx container with public ports 80/443
+    local NGINX_CONTAINER=""
+    local ALL_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+    
+    for CONTAINER in $ALL_CONTAINERS; do
+        local PORT_BINDINGS=$(docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Ports}}' 2>/dev/null)
+        
+        if echo "$PORT_BINDINGS" | grep -qE '"(80|443)/tcp".*"HostIp":"(0\.0\.0\.0|::)"'; then
+            local IMAGE=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null)
+            
+            if echo "$CONTAINER $IMAGE" | grep -iqE "(nginx|proxy)"; then
+                NGINX_CONTAINER="$CONTAINER"
+                break
+            fi
+        fi
+    done
+    
+    if [ -z "$NGINX_CONTAINER" ]; then
+        print_warning "No nginx container detected on ports 80/443"
+        print_info "Make sure your nginx container is running"
+        return 0
+    fi
+    
+    print_success "Detected nginx container: $NGINX_CONTAINER"
+    
+    # Get the nginx container's networks
+    local NGINX_NETWORKS=$(docker inspect "$NGINX_CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null)
+    
+    if [ -z "$NGINX_NETWORKS" ]; then
+        print_warning "Could not detect nginx networks"
+        return 0
+    fi
+    
+    print_info "Nginx networks: $NGINX_NETWORKS"
+    
+    # Connect app container to each nginx network
+    for NETWORK in $NGINX_NETWORKS; do
+        # Check if already connected
+        if docker inspect "$APP_CONTAINER" 2>/dev/null | grep -q "\"$NETWORK\""; then
+            print_info "Already connected to network: $NETWORK"
+        else
+            print_info "Connecting $APP_CONTAINER to network: $NETWORK..."
+            if docker network connect "$NETWORK" "$APP_CONTAINER" 2>/dev/null; then
+                print_success "Connected to $NETWORK"
+            else
+                print_warning "Failed to connect to $NETWORK (may already be connected)"
+            fi
+        fi
+    done
+    
+    # Verify connection using the container name that nginx expects (isp-manager-app)
+    print_info "Verifying nginx can reach isp-manager-app..."
+    if docker exec "$NGINX_CONTAINER" wget -qO- http://isp-manager-app:5000 >/dev/null 2>&1; then
+        print_success "Network connection verified!"
+    else
+        print_warning "Could not verify network connection"
+        print_info "Nginx may not be able to reach isp-manager-app"
+    fi
+}
+
 # Display service status
 show_status() {
     print_header "Service Status"
@@ -706,6 +793,9 @@ main() {
     fi
     
     wait_for_services
+    
+    # Connect to existing nginx network (if in existing_nginx mode)
+    connect_to_nginx_network
     
     # Generate Nginx config first (needed by ssl-provision.sh)
     generate_nginx_config
