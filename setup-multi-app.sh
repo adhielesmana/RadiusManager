@@ -544,11 +544,27 @@ for ((i=0; i<NUM_APPS; i++)); do
     
     cat >> "$SSL_SCRIPT" << EOF
 echo "Getting certificate for ${APP_DOMAIN}..."
-docker stop \$NGINX_CONTAINER
-certbot certonly --standalone -d ${APP_DOMAIN} -m ${SSL_EMAIL} --agree-tos
-docker start \$NGINX_CONTAINER
-echo "✓ Certificate obtained for ${APP_DOMAIN}"
-echo ""
+
+# Check if certificate already exists and is valid
+if docker exec \$NGINX_CONTAINER test -f /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem 2>/dev/null; then
+    echo "Certificate already exists for ${APP_DOMAIN}, checking validity..."
+    if docker exec \$NGINX_CONTAINER openssl x509 -checkend 2592000 -noout -in /etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem 2>/dev/null; then
+        echo "✓ Existing certificate is valid (>30 days), skipping"
+        echo ""
+    else
+        echo "Certificate exists but expiring soon, renewing..."
+        docker exec \$NGINX_CONTAINER certbot renew --cert-name ${APP_DOMAIN}
+        echo "✓ Certificate renewed for ${APP_DOMAIN}"
+        echo ""
+    fi
+else
+    echo "No existing certificate, obtaining new one..."
+    docker stop \$NGINX_CONTAINER
+    docker run --rm -p 80:80 -p 443:443 -v /etc/letsencrypt:/etc/letsencrypt certbot/certbot certonly --standalone -d ${APP_DOMAIN} -m ${SSL_EMAIL} --agree-tos --non-interactive
+    docker start \$NGINX_CONTAINER
+    echo "✓ Certificate obtained for ${APP_DOMAIN}"
+    echo ""
+fi
 
 EOF
 done
