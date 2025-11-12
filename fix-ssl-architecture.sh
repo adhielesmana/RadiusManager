@@ -21,7 +21,7 @@ echo -e "${GREEN}✓${NC} Backup created"
 echo ""
 
 echo "Step 2: Create mon.conf in container"
-docker exec "$NGINX_CONTAINER" bash -c 'cat > /etc/nginx/conf.d/mon.conf << '\''EOF'\''
+docker exec "$NGINX_CONTAINER" sh -c 'cat > /etc/nginx/conf.d/mon.conf << '\''EOF'\''
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
