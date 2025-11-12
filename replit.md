@@ -23,7 +23,14 @@ Key features and design decisions include:
 - **Company Group System**: Facilitates multi-company group management, impacting subscription ID generation.
 - **FTTH Infrastructure Management**: Hierarchical system for POPs, OLTs, PON Ports, Distribution Boxes, and ONUs, including GPS tracking, capacity planning, and vendor-specific OLT configurations (ZTE C320 GPON, HIOSO EPON). Includes an interactive Leaflet map for coverage visualization. All FTTH management pages feature both read-only detail view and edit capabilities, with dedicated detail dialogs showing comprehensive information about each infrastructure component.
 - **Router/NAS Management**: CRUD operations for Network Access Servers (routers) with secure RADIUS secret management and type validation (MikroTik, Cisco, Ubiquiti, Other).
-- **Deployment**: Designed for Docker Compose orchestration of PostgreSQL, FreeRADIUS, and the ISP Manager application. Supports flexible Nginx integration, including automatic detection of existing Nginx setups and **fully automated SSL certificate provisioning** with Let's Encrypt. The deployment system auto-detects existing Docker Nginx containers, generates Nginx configurations, provisions SSL certificates automatically, and reloads Nginx without any manual intervention. Features idempotent SSL provisioning (skips if certificate is valid), smart container detection, and graceful error handling.
+- **Deployment**: Designed for Docker Compose orchestration of PostgreSQL, FreeRADIUS, and the ISP Manager application. Supports flexible Nginx integration with **zero-configuration multi-app deployment**:
+  - **Automatic Network Connection**: Auto-detects existing nginx containers and connects isp-manager-app to shared networks
+  - **SSL Certificate Management**: Automatically copies certificates from host into nginx container
+  - **Nginx Config Patching**: Intelligently fixes nginx.conf to comment out global SSL directives while preserving per-domain certificates
+  - **Multi-App SSL Provisioning**: Generates and installs SSL certificates for multiple domains via Let's Encrypt
+  - **Smart Detection**: Identifies nginx containers by public port exposure (80/443) and validates connectivity
+  - **Graceful Degradation**: Safely handles missing certificates, config errors, and network issues with automatic rollback
+  - **Production-Ready**: Runs in production mode (Node.js 20, npm start) with health checks and automatic restarts
 
 ## External Dependencies
 - **PostgreSQL**: Relational database for application and FreeRADIUS data.

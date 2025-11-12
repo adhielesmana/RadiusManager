@@ -510,6 +510,121 @@ connect_to_nginx_network() {
         print_warning "Could not verify network connection"
         print_info "Nginx may not be able to reach isp-manager-app"
     fi
+    
+    # Return nginx container name for use by other functions
+    echo "$NGINX_CONTAINER"
+}
+
+# Setup SSL certificates in nginx container
+setup_nginx_ssl() {
+    print_header "Setting Up SSL Certificates in Nginx"
+    
+    # Only do this for existing_nginx mode
+    if [ "$SSL_MODE" != "EXISTING_NGINX" ]; then
+        print_info "Not in existing_nginx mode, skipping SSL setup"
+        return 0
+    fi
+    
+    # Detect nginx container
+    local NGINX_CONTAINER=""
+    local ALL_CONTAINERS=$(docker ps --format "{{.Names}}" 2>/dev/null)
+    
+    for CONTAINER in $ALL_CONTAINERS; do
+        local PORT_BINDINGS=$(docker inspect "$CONTAINER" --format '{{json .NetworkSettings.Ports}}' 2>/dev/null)
+        
+        if echo "$PORT_BINDINGS" | grep -qE '"(80|443)/tcp".*"HostIp":"(0\.0\.0\.0|::)"'; then
+            local IMAGE=$(docker inspect "$CONTAINER" --format '{{.Config.Image}}' 2>/dev/null)
+            
+            if echo "$CONTAINER $IMAGE" | grep -iqE "(nginx|proxy)"; then
+                NGINX_CONTAINER="$CONTAINER"
+                break
+            fi
+        fi
+    done
+    
+    if [ -z "$NGINX_CONTAINER" ]; then
+        print_warning "No nginx container detected, skipping SSL setup"
+        return 0
+    fi
+    
+    print_success "Nginx container: $NGINX_CONTAINER"
+    
+    # Check if /etc/letsencrypt exists on host
+    if [ ! -d /etc/letsencrypt ]; then
+        print_info "No /etc/letsencrypt directory found on host"
+        print_info "Certificates will be provisioned later"
+        return 0
+    fi
+    
+    # Check if certificates already exist in container
+    if docker exec "$NGINX_CONTAINER" test -d /etc/letsencrypt/live 2>/dev/null; then
+        print_info "Certificates already exist in container"
+    else
+        # Stop nginx to copy files safely
+        print_info "Stopping nginx temporarily to copy certificates..."
+        docker stop "$NGINX_CONTAINER" >/dev/null 2>&1
+        
+        # Copy certificates into container
+        print_info "Copying SSL certificates into nginx container..."
+        docker cp /etc/letsencrypt "$NGINX_CONTAINER":/etc/ 2>/dev/null || {
+            print_warning "Failed to copy certificates"
+        }
+        
+        # Start nginx
+        print_info "Starting nginx..."
+        docker start "$NGINX_CONTAINER" >/dev/null 2>&1
+        sleep 3
+    fi
+    
+    # Fix nginx.conf to comment out ONLY global http-level SSL directives
+    print_info "Fixing nginx.conf to use per-domain certificates..."
+    
+    # Use docker exec to edit the file directly inside the container
+    # This avoids file locking issues and keeps the temp file until we're done
+    docker exec "$NGINX_CONTAINER" sh -c '
+        # Create backup
+        cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
+        
+        # Use awk to comment out ONLY global SSL directives in http block (not in server blocks)
+        awk "
+        BEGIN { in_http=0; in_server=0 }
+        /^http[[:space:]]*\{/ { in_http=1 }
+        /^[[:space:]]*server[[:space:]]*\{/ && in_http==1 { in_server=1 }
+        /^[[:space:]]*\}/ && in_server==1 { in_server=0; print; next }
+        /^[[:space:]]*\}/ && in_http==1 { in_http=0 }
+        
+        # Comment out ssl_certificate lines ONLY when in http block but NOT in server block
+        /^[[:space:]]*ssl_certificate/ && in_http==1 && in_server==0 { print \"        #\" \$0; next }
+        
+        { print }
+        " /etc/nginx/nginx.conf.backup > /etc/nginx/nginx.conf.new
+        
+        # Replace the config
+        mv /etc/nginx/nginx.conf.new /etc/nginx/nginx.conf
+    ' 2>/dev/null || {
+        print_warning "Could not edit nginx.conf automatically"
+        return 0
+    }
+    
+    # Test nginx config
+    print_info "Testing nginx configuration..."
+    if docker exec "$NGINX_CONTAINER" nginx -t 2>&1 | grep -q "successful"; then
+        print_success "Nginx configuration is valid"
+    else
+        print_error "Nginx configuration has errors, reverting..."
+        docker exec "$NGINX_CONTAINER" sh -c "cp /etc/nginx/nginx.conf.backup /etc/nginx/nginx.conf" 2>/dev/null || true
+        return 1
+    fi
+    
+    # Reload nginx
+    print_info "Reloading nginx..."
+    docker exec "$NGINX_CONTAINER" nginx -s reload 2>/dev/null || {
+        print_warning "Could not reload nginx, restarting container..."
+        docker restart "$NGINX_CONTAINER" >/dev/null 2>&1
+        sleep 3
+    }
+    
+    print_success "SSL setup complete!"
 }
 
 # Display service status
@@ -796,6 +911,9 @@ main() {
     
     # Connect to existing nginx network (if in existing_nginx mode)
     connect_to_nginx_network
+    
+    # Setup SSL certificates in nginx container (copy certs, fix nginx.conf)
+    setup_nginx_ssl
     
     # Generate Nginx config first (needed by ssl-provision.sh)
     generate_nginx_config
