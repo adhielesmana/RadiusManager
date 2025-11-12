@@ -580,27 +580,20 @@ setup_nginx_ssl() {
     print_info "Fixing nginx.conf to use per-domain certificates..."
     
     # Use docker exec to edit the file directly inside the container
-    # This avoids file locking issues and keeps the temp file until we're done
+    # Simpler approach: use sed to comment out ssl_certificate lines in http block
+    # that match the specific global path pattern
     docker exec "$NGINX_CONTAINER" sh -c '
         # Create backup
         cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
         
-        # Use awk to comment out ONLY global SSL directives in http block (not in server blocks)
-        awk "
-        BEGIN { in_http=0; in_server=0 }
-        /^http[[:space:]]*\{/ { in_http=1 }
-        /^[[:space:]]*server[[:space:]]*\{/ && in_http==1 { in_server=1 }
-        /^[[:space:]]*\}/ && in_server==1 { in_server=0; print; next }
-        /^[[:space:]]*\}/ && in_http==1 { in_http=0 }
+        # Comment out global SSL certificate directives that use /etc/nginx/ssl/ path
+        # These are the global ones that override per-domain certificates
+        sed -i.tmp \
+            -e "s|^[[:space:]]*ssl_certificate[[:space:]]\+/etc/nginx/ssl/|    #ssl_certificate /etc/nginx/ssl/|" \
+            -e "s|^[[:space:]]*ssl_certificate_key[[:space:]]\+/etc/nginx/ssl/|    #ssl_certificate_key /etc/nginx/ssl/|" \
+            /etc/nginx/nginx.conf
         
-        # Comment out ssl_certificate lines ONLY when in http block but NOT in server block
-        /^[[:space:]]*ssl_certificate/ && in_http==1 && in_server==0 { print \"        #\" \$0; next }
-        
-        { print }
-        " /etc/nginx/nginx.conf.backup > /etc/nginx/nginx.conf.new
-        
-        # Replace the config
-        mv /etc/nginx/nginx.conf.new /etc/nginx/nginx.conf
+        rm -f /etc/nginx/nginx.conf.tmp
     ' 2>/dev/null || {
         print_warning "Could not edit nginx.conf automatically"
         return 0
