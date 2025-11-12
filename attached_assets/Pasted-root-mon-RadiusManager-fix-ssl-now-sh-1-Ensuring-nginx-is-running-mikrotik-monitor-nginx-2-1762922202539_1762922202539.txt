@@ -1,0 +1,34 @@
+root@mon:~/RadiusManager# ./fix-ssl-now.sh 
+1. Ensuring nginx is running...
+mikrotik-monitor-nginx
+2. Copying config out...
+Successfully copied 7.17kB to /tmp/nginx.conf
+3. Editing (commenting out global SSL)...
+4. Applying modified config (using tee while running)...
+tee: /etc/nginx/nginx.conf: Read-only file system
+5. Testing config...
+2025/11/12 04:36:17 [warn] 32#32: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:73
+nginx: [warn] the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:73
+2025/11/12 04:36:17 [warn] 32#32: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:74
+nginx: [warn] the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:74
+2025/11/12 04:36:17 [warn] 32#32: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/nginx/ssl/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/nginx/ssl/fullchain.pem"
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+6. Reloading nginx...
+2025/11/12 04:36:17 [warn] 38#38: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:73
+nginx: [warn] the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:73
+2025/11/12 04:36:17 [warn] 38#38: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:74
+nginx: [warn] the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:74
+2025/11/12 04:36:17 [warn] 38#38: "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/nginx/ssl/fullchain.pem"
+nginx: [warn] "ssl_stapling" ignored, no OCSP responder URL in the certificate "/etc/nginx/ssl/fullchain.pem"
+2025/11/12 04:36:17 [notice] 38#38: signal process started
+7. Testing SSL...
+curl: (60) SSL: no alternative certificate subject name matches target hostname 'isp.maxnetplus.id'
+More details here: https://curl.se/docs/sslcerts.html
+
+curl failed to verify the legitimacy of the server and therefore could not
+establish a secure connection to it. To learn more about this situation and
+how to fix it, please visit the webpage mentioned above.
+
+Done! Check if SSL error is gone above.
