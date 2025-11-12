@@ -37,7 +37,7 @@ Key features and design decisions include:
     - Only provisions new certificates when missing
     - Automatically copies certificates from host into nginx container
     - Shows certificate expiry dates for transparency
-  - **Nginx Config Patching**: Intelligently fixes nginx.conf to comment out global SSL directives while preserving per-domain certificates
+  - **Nginx Config Patching**: Intelligently fixes nginx.conf to comment out global SSL directives while preserving per-domain certificates (uses copy-out/edit/copy-back method to avoid "Resource busy" errors)
   - **Multi-App SSL Provisioning**: Generates and installs SSL certificates for multiple domains via Let's Encrypt
   - **Smart Detection**: Identifies nginx containers by public port exposure (80/443) and validates connectivity
   - **Graceful Degradation**: Safely handles missing certificates, config errors, and network issues with automatic rollback

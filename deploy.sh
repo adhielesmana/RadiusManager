@@ -560,44 +560,76 @@ setup_nginx_ssl() {
     if docker exec "$NGINX_CONTAINER" test -d /etc/letsencrypt/live 2>/dev/null; then
         print_info "Certificates already exist in container"
     else
-        # Stop nginx to copy files safely
-        print_info "Stopping nginx temporarily to copy certificates..."
-        docker stop "$NGINX_CONTAINER" >/dev/null 2>&1
+        print_info "Copying SSL certificates into nginx container..."
+        
+        # Stop nginx to copy files safely (|| true to avoid abort if already stopped)
+        print_info "Stopping nginx temporarily..."
+        docker stop "$NGINX_CONTAINER" >/dev/null 2>&1 || true
         
         # Copy certificates into container
-        print_info "Copying SSL certificates into nginx container..."
         docker cp /etc/letsencrypt "$NGINX_CONTAINER":/etc/ 2>/dev/null || {
             print_warning "Failed to copy certificates"
         }
         
-        # Start nginx
+        # Start nginx back up (|| true to avoid abort)
         print_info "Starting nginx..."
-        docker start "$NGINX_CONTAINER" >/dev/null 2>&1
+        docker start "$NGINX_CONTAINER" >/dev/null 2>&1 || true
         sleep 3
+        
+        print_success "Certificates copied successfully"
     fi
     
-    # Fix nginx.conf to comment out ONLY global http-level SSL directives
+    # Fix nginx.conf to comment out global SSL directives
+    # Copy file out → edit locally → copy back in to avoid "Resource busy" errors
     print_info "Fixing nginx.conf to use per-domain certificates..."
     
-    # Use docker exec to edit the file directly inside the container
-    # Simpler approach: use sed to comment out ssl_certificate lines in http block
-    # that match the specific global path pattern
-    docker exec "$NGINX_CONTAINER" sh -c '
-        # Create backup
-        cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
-        
-        # Comment out global SSL certificate directives that use /etc/nginx/ssl/ path
-        # These are the global ones that override per-domain certificates
-        sed -i.tmp \
-            -e "s|^[[:space:]]*ssl_certificate[[:space:]]\+/etc/nginx/ssl/|    #ssl_certificate /etc/nginx/ssl/|" \
-            -e "s|^[[:space:]]*ssl_certificate_key[[:space:]]\+/etc/nginx/ssl/|    #ssl_certificate_key /etc/nginx/ssl/|" \
-            /etc/nginx/nginx.conf
-        
-        rm -f /etc/nginx/nginx.conf.tmp
-    ' 2>/dev/null || {
-        print_warning "Could not edit nginx.conf automatically"
+    # Create temp directory
+    TEMP_DIR=$(mktemp -d)
+    
+    # Copy nginx.conf from container to host
+    docker cp "$NGINX_CONTAINER":/etc/nginx/nginx.conf "$TEMP_DIR/nginx.conf" 2>/dev/null || {
+        print_warning "Could not copy nginx.conf from container"
+        rm -rf "$TEMP_DIR"
         return 0
     }
+    
+    # Create backup
+    cp "$TEMP_DIR/nginx.conf" "$TEMP_DIR/nginx.conf.backup"
+    
+    # Edit locally (sed works on regular files)
+    sed -i \
+        -e 's|^[[:space:]]*ssl_certificate[[:space:]]\+/etc/nginx/ssl/|    #ssl_certificate /etc/nginx/ssl/|' \
+        -e 's|^[[:space:]]*ssl_certificate_key[[:space:]]\+/etc/nginx/ssl/|    #ssl_certificate_key /etc/nginx/ssl/|' \
+        "$TEMP_DIR/nginx.conf" 2>/dev/null || {
+        print_warning "Could not edit nginx.conf"
+        rm -rf "$TEMP_DIR"
+        return 0
+    }
+    
+    # Stop nginx to copy file back in (|| true to avoid abort if already stopped)
+    docker stop "$NGINX_CONTAINER" >/dev/null 2>&1 || true
+    
+    # Copy modified nginx.conf back to container
+    docker cp "$TEMP_DIR/nginx.conf" "$NGINX_CONTAINER":/etc/nginx/nginx.conf 2>/dev/null || {
+        print_error "Could not copy modified nginx.conf back to container"
+        # Try to restore backup
+        docker cp "$TEMP_DIR/nginx.conf.backup" "$NGINX_CONTAINER":/etc/nginx/nginx.conf 2>/dev/null || true
+        rm -rf "$TEMP_DIR"
+        docker start "$NGINX_CONTAINER" >/dev/null 2>&1 || true
+        return 1
+    }
+    
+    # Also copy backup to container for later rollback if needed
+    docker cp "$TEMP_DIR/nginx.conf.backup" "$NGINX_CONTAINER":/etc/nginx/nginx.conf.backup 2>/dev/null || true
+    
+    # Start nginx (|| true to avoid abort)
+    docker start "$NGINX_CONTAINER" >/dev/null 2>&1 || true
+    sleep 3
+    
+    print_success "nginx.conf updated successfully"
+    
+    # Cleanup temp dir
+    rm -rf "$TEMP_DIR"
     
     # Test nginx config
     print_info "Testing nginx configuration..."
@@ -605,7 +637,22 @@ setup_nginx_ssl() {
         print_success "Nginx configuration is valid"
     else
         print_error "Nginx configuration has errors, reverting..."
-        docker exec "$NGINX_CONTAINER" sh -c "cp /etc/nginx/nginx.conf.backup /etc/nginx/nginx.conf" 2>/dev/null || true
+        
+        # Stop nginx to restore backup
+        docker stop "$NGINX_CONTAINER" >/dev/null 2>&1 || true
+        
+        # Restore backup
+        if docker exec "$NGINX_CONTAINER" test -f /etc/nginx/nginx.conf.backup 2>/dev/null; then
+            docker exec "$NGINX_CONTAINER" cp /etc/nginx/nginx.conf.backup /etc/nginx/nginx.conf 2>/dev/null || {
+                print_error "Could not restore backup"
+            }
+        fi
+        
+        # Start nginx with original config
+        docker start "$NGINX_CONTAINER" >/dev/null 2>&1 || true
+        sleep 2
+        
+        print_warning "Reverted to original nginx.conf"
         return 1
     fi
     
