@@ -88,8 +88,11 @@ services:
       - PGPASSWORD=${DB_PASSWORD:-isppass123}
       - PGDATABASE=ispmanager
       - SESSION_SECRET=${SESSION_SECRET:-change-this-in-production}
-      - RADIUS_HOST=freeradius
+      # FreeRADIUS Configuration - Default: Local container, Customizable: External server
+      - RADIUS_HOST=${RADIUS_HOST:-freeradius}
       - RADIUS_SECRET=${RADIUS_SECRET:-testing123}
+      - RADIUS_AUTH_PORT=${RADIUS_AUTH_PORT:-1812}
+      - RADIUS_ACCT_PORT=${RADIUS_ACCT_PORT:-1813}
     volumes:
       # Mount for development (comment out for production)
       - ./client:/app/client

@@ -226,6 +226,17 @@ main() {
         sed -i "s/^LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$APP_EMAIL/" .env
     fi
     
+    # Ensure FreeRADIUS configuration exists (defaults to local container)
+    if ! grep -q "^RADIUS_HOST=" .env; then
+        echo "RADIUS_HOST=freeradius" >> .env
+    fi
+    if ! grep -q "^RADIUS_AUTH_PORT=" .env; then
+        echo "RADIUS_AUTH_PORT=1812" >> .env
+    fi
+    if ! grep -q "^RADIUS_ACCT_PORT=" .env; then
+        echo "RADIUS_ACCT_PORT=1813" >> .env
+    fi
+    
     print_success "Environment configured"
     
     # Summary (skip in auto mode)
@@ -242,6 +253,7 @@ main() {
         print_info "Configuration:"
         echo "  • Deployment Mode: Host Nginx"
         echo "  • App Port: $APP_PORT"
+        echo "  • FreeRADIUS: Local container (customizable in .env)"
         [ -n "$APP_DOMAIN" ] && echo "  • Domain: $APP_DOMAIN"
         [ -n "$APP_EMAIL" ] && echo "  • Email: $APP_EMAIL"
         echo ""

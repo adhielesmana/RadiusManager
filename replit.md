@@ -23,6 +23,7 @@ Key features and design decisions include:
 - **Company Group System**: Facilitates multi-company group management, impacting subscription ID generation.
 - **FTTH Infrastructure Management**: Hierarchical system for POPs, OLTs, PON Ports, Distribution Boxes, and ONUs, including GPS tracking, capacity planning, and vendor-specific OLT configurations (ZTE C320 GPON, HIOSO EPON). Includes an interactive Leaflet map for coverage visualization. All FTTH management pages feature both read-only detail view and edit capabilities, with dedicated detail dialogs showing comprehensive information about each infrastructure component.
 - **Router/NAS Management**: CRUD operations for Network Access Servers (routers) with secure RADIUS secret management and type validation (MikroTik, Cisco, Ubiquiti, Other).
+- **FreeRADIUS Integration**: By default, the production deployment uses a **local FreeRADIUS container** that runs alongside the application in Docker. This is zero-configuration and works out of the box. The system can be easily customized to point to an **external FreeRADIUS server** by modifying environment variables (`RADIUS_HOST`, `RADIUS_SECRET`, `RADIUS_AUTH_PORT`, `RADIUS_ACCT_PORT`) in the `.env` file. This allows flexibility for ISPs with existing RADIUS infrastructure or centralized RADIUS servers.
 - **Deployment**: Supports **dual-mode deployment architecture** with **intelligent nginx auto-detection**:
   
   ### **Intelligent Nginx Detection**

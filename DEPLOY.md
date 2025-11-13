@@ -30,6 +30,12 @@ This will:
 Your app will be accessible at:
 **https://isp.maxnetplus.id**
 
+**Includes:**
+- ✓ PostgreSQL Database
+- ✓ Local FreeRADIUS (customizable to external server)
+- ✓ ISP Manager Application
+- ✓ SSL Certificate (HTTPS)
+
 ---
 
 ## Fast Nginx Updates (No Docker Rebuild)
@@ -51,6 +57,31 @@ Perfect for:
 - Updating SSL settings
 - Modifying proxy settings
 - Testing nginx configuration
+
+---
+
+## FreeRADIUS Configuration
+
+### Default: Local FreeRADIUS
+By default, uses a local FreeRADIUS container running alongside the app.
+
+**No configuration needed!** It just works.
+
+### Customize: External FreeRADIUS Server
+To use your own FreeRADIUS server:
+
+1. Edit `.env` file:
+```bash
+RADIUS_HOST=192.168.1.100        # Your FreeRADIUS IP
+RADIUS_SECRET=your-shared-secret # Match your RADIUS secret
+```
+
+2. Restart:
+```bash
+./deploy.sh
+```
+
+**See [FREERADIUS_CONFIG.md](FREERADIUS_CONFIG.md) for detailed instructions.**
 
 ---
 
