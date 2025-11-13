@@ -42,6 +42,8 @@ export default function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [companyGroupDialogOpen, setCompanyGroupDialogOpen] = useState(false);
   const [selectedCompanyGroup, setSelectedCompanyGroup] = useState<CompanyGroup | null>(null);
+  const [savingRadius, setSavingRadius] = useState(false);
+  const [resettingRadius, setResettingRadius] = useState(false);
 
   const { data: settings, isLoading } = useQuery<Settings>({
     queryKey: ['/api/settings'],
@@ -152,6 +154,76 @@ export default function Settings() {
     updateSettingsMutation.mutate({ logoUrl: "" });
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSaveRadiusConfig = async () => {
+    try {
+      setSavingRadius(true);
+      const radiusHost = (document.getElementById('radius-host') as HTMLInputElement)?.value || null;
+      const radiusSecret = (document.getElementById('radius-secret') as HTMLInputElement)?.value || null;
+      const radiusAuthPort = (document.getElementById('radius-auth-port') as HTMLInputElement)?.value;
+      const radiusAcctPort = (document.getElementById('radius-acct-port') as HTMLInputElement)?.value;
+
+      await apiRequest('/api/settings/radius', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          radiusHost,
+          radiusSecret,
+          radiusAuthPort: radiusAuthPort ? parseInt(radiusAuthPort) : null,
+          radiusAcctPort: radiusAcctPort ? parseInt(radiusAcctPort) : null,
+        }),
+      });
+
+      await queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/status/radius'] });
+      refetchRadiusStatus();
+
+      toast({
+        title: "RADIUS configuration saved",
+        description: "RADIUS server settings have been updated successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save RADIUS configuration",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingRadius(false);
+    }
+  };
+
+  const handleResetRadiusConfig = async () => {
+    try {
+      setResettingRadius(true);
+
+      await apiRequest('/api/settings/radius/reset', {
+        method: 'POST',
+      });
+
+      // Clear input fields
+      (document.getElementById('radius-host') as HTMLInputElement).value = '';
+      (document.getElementById('radius-secret') as HTMLInputElement).value = '';
+      (document.getElementById('radius-auth-port') as HTMLInputElement).value = '';
+      (document.getElementById('radius-acct-port') as HTMLInputElement).value = '';
+
+      await queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/status/radius'] });
+      refetchRadiusStatus();
+
+      toast({
+        title: "RADIUS configuration reset",
+        description: "RADIUS server settings have been reset to defaults (local container).",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reset RADIUS configuration",
+        variant: "destructive",
+      });
+    } finally {
+      setResettingRadius(false);
     }
   };
 
@@ -321,6 +393,110 @@ export default function Settings() {
           </CardContent>
         </Card>
       </div>
+
+      {/* RADIUS Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wifi className="h-5 w-5" />
+            FreeRADIUS Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure RADIUS server connection. Leave fields empty to use local container defaults.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="radius-host">RADIUS Host</Label>
+              <Input
+                id="radius-host"
+                placeholder="freeradius (default)"
+                defaultValue={settings?.radiusHost || ''}
+                data-testid="input-radius-host"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty for local container (freeradius)
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="radius-secret">RADIUS Secret</Label>
+              <Input
+                id="radius-secret"
+                type="password"
+                placeholder="testing123 (default)"
+                defaultValue={settings?.radiusSecret || ''}
+                data-testid="input-radius-secret"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty for default (testing123)
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="radius-auth-port">Auth Port</Label>
+              <Input
+                id="radius-auth-port"
+                type="number"
+                placeholder="1812 (default)"
+                defaultValue={settings?.radiusAuthPort || ''}
+                data-testid="input-radius-auth-port"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty for default (1812)
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="radius-acct-port">Accounting Port</Label>
+              <Input
+                id="radius-acct-port"
+                type="number"
+                placeholder="1813 (default)"
+                defaultValue={settings?.radiusAcctPort || ''}
+                data-testid="input-radius-acct-port"
+              />
+              <p className="text-xs text-muted-foreground">
+                Leave empty for default (1813)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleSaveRadiusConfig()}
+              disabled={savingRadius}
+              data-testid="button-save-radius-config"
+            >
+              {savingRadius ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Configuration'
+              )}
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={() => handleResetRadiusConfig()}
+              disabled={resettingRadius}
+              data-testid="button-reset-radius-config"
+            >
+              {resettingRadius ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                'Reset to Defaults'
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
