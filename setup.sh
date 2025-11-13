@@ -195,9 +195,23 @@ main() {
     fi
     
     # Set deployment mode to host_nginx
-    sed -i "s/^DEPLOYMENT_MODE=.*/DEPLOYMENT_MODE=host_nginx/" .env
-    sed -i "s/^USE_DOCKER_COMPOSE_SSL=.*/USE_DOCKER_COMPOSE_SSL=false/" .env
-    sed -i "s/^ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+    if grep -q "^DEPLOYMENT_MODE=" .env; then
+        sed -i "s/^DEPLOYMENT_MODE=.*/DEPLOYMENT_MODE=host_nginx/" .env
+    else
+        echo "DEPLOYMENT_MODE=host_nginx" >> .env
+    fi
+    
+    if grep -q "^USE_DOCKER_COMPOSE_SSL=" .env; then
+        sed -i "s/^USE_DOCKER_COMPOSE_SSL=.*/USE_DOCKER_COMPOSE_SSL=false/" .env
+    else
+        echo "USE_DOCKER_COMPOSE_SSL=false" >> .env
+    fi
+    
+    if grep -q "^ENABLE_SSL=" .env; then
+        sed -i "s/^ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+    else
+        echo "ENABLE_SSL=true" >> .env
+    fi
     
     # Find available port for app (avoid 80, 443 used by nginx)
     APP_PORT=5000

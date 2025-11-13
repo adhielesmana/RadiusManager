@@ -855,6 +855,8 @@ show_commands() {
     
     if [ "$SSL_MODE" = "ENABLED" ]; then
         COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.ssl.yml"
+    elif [ "$SSL_MODE" = "HOST_NGINX" ]; then
+        COMPOSE_CMD="docker compose -f docker-compose.yml"
     else
         COMPOSE_CMD="docker compose"
     fi
