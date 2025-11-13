@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCustomerSchema, insertSubscriptionSchema, insertProfileSchema, insertInvoiceSchema, insertPaymentSchema, insertTicketSchema, insertSettingsSchema, insertCompanyGroupSchema, insertUserSchema, insertNasSchema, insertPopSchema, insertOltSchema, insertDistributionBoxSchema, insertOnuSchema } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { customers, subscriptions, profiles, invoices, tickets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -648,6 +648,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(settings);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Connection Status Endpoints
+  app.get("/api/status/database", async (_req, res) => {
+    try {
+      const startTime = Date.now();
+      // Try to execute a simple query
+      await pool.query('SELECT 1');
+      const responseTime = Date.now() - startTime;
+      
+      res.json({
+        connected: true,
+        host: process.env.PGHOST || 'localhost',
+        database: process.env.PGDATABASE || 'ispmanager',
+        responseTime,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(503).json({
+        connected: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  app.get("/api/status/radius", async (_req, res) => {
+    try {
+      const radiusHost = process.env.RADIUS_HOST || 'freeradius';
+      const radiusSecret = process.env.RADIUS_SECRET || 'testing123';
+      const radiusAuthPort = parseInt(process.env.RADIUS_AUTH_PORT || '1812');
+      
+      // Check if RADIUS server is reachable by querying radcheck table
+      const startTime = Date.now();
+      const result = await pool.query('SELECT COUNT(*) FROM radcheck LIMIT 1');
+      const responseTime = Date.now() - startTime;
+      
+      res.json({
+        connected: true,
+        host: radiusHost,
+        port: radiusAuthPort,
+        secret: radiusSecret.substring(0, 3) + '***', // Masked for security
+        type: radiusHost === 'freeradius' ? 'Local Container' : 'External Server',
+        responseTime,
+        userCount: parseInt(result.rows[0].count),
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(503).json({
+        connected: false,
+        host: process.env.RADIUS_HOST || 'freeradius',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
     }
   });
 
