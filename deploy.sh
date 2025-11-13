@@ -1147,6 +1147,13 @@ main() {
     
     # Setup Host Nginx (if in host_nginx mode)
     if [ "$SETUP_HOST_NGINX" = "true" ]; then
+        # Require root for nginx configuration
+        if [ "$EUID" -ne 0 ]; then
+            print_error "Host nginx setup requires root privileges"
+            print_info "Please run: sudo ./deploy.sh"
+            exit 1
+        fi
+        
         print_header "Setting Up Host Nginx"
         echo ""
         
@@ -1394,6 +1401,21 @@ EOF
                 echo "  - Copy Nginx config to container"
             fi
             echo ""
+        fi
+    elif [ "$SSL_MODE" = "HOST_NGINX" ]; then
+        if [ -n "$APP_DOMAIN" ]; then
+            if [ -d "/etc/letsencrypt/live/$APP_DOMAIN" ]; then
+                print_success "✓ ISP Manager is now running at https://${APP_DOMAIN}"
+            else
+                print_warning "Backend running on port ${APP_HOST_PORT:-5000}"
+                print_warning "SSL certificate not obtained yet"
+                echo ""
+                echo "  To complete HTTPS setup, run:"
+                echo "  sudo certbot --nginx -d $APP_DOMAIN"
+            fi
+        else
+            print_warning "Backend running on port ${APP_HOST_PORT:-5000}"
+            print_warning "No domain configured"
         fi
     else
         print_success "ISP Manager is now running at http://localhost:${APP_HOST_PORT:-5000}"
