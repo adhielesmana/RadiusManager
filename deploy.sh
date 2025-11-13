@@ -894,6 +894,144 @@ show_commands() {
     echo ""
 }
 
+# Auto-detect and install dependencies
+auto_setup_dependencies() {
+    local SETUP_NEEDED=false
+    
+    # Check if we need to do any setup
+    if ! command_exists nginx || ! command_exists certbot || ! command_exists docker; then
+        SETUP_NEEDED=true
+        
+        print_header "Auto-Setup: Installing Dependencies"
+        
+        # Detect OS
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            OS=$ID
+        else
+            print_error "Cannot detect OS"
+            exit 1
+        fi
+        
+        # Install nginx if missing
+        if ! command_exists nginx; then
+            print_info "Installing nginx..."
+            case "$OS" in
+                ubuntu|debian)
+                    apt-get update -qq
+                    apt-get install -y nginx
+                    ;;
+                centos|rhel|rocky|almalinux)
+                    yum install -y epel-release
+                    yum install -y nginx
+                    ;;
+                fedora)
+                    dnf install -y nginx
+                    ;;
+            esac
+            
+            systemctl enable nginx
+            systemctl start nginx
+            mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+            
+            if ! grep -q "sites-enabled" /etc/nginx/nginx.conf; then
+                sed -i '/http {/a \    include /etc/nginx/sites-enabled/*;' /etc/nginx/nginx.conf
+            fi
+            
+            systemctl reload nginx
+            print_success "Nginx installed"
+        fi
+        
+        # Install certbot if missing
+        if ! command_exists certbot; then
+            print_info "Installing certbot..."
+            case "$OS" in
+                ubuntu|debian)
+                    apt-get install -y certbot python3-certbot-nginx
+                    ;;
+                centos|rhel|rocky|almalinux)
+                    yum install -y certbot python3-certbot-nginx
+                    ;;
+                fedora)
+                    dnf install -y certbot python3-certbot-nginx
+                    ;;
+            esac
+            print_success "Certbot installed"
+        fi
+        
+        # Install Docker if missing
+        if ! command_exists docker; then
+            print_info "Installing Docker..."
+            case "$OS" in
+                ubuntu|debian)
+                    apt-get install -y docker.io docker-compose-plugin
+                    ;;
+                centos|rhel|rocky|almalinux|fedora)
+                    yum install -y docker docker-compose-plugin
+                    ;;
+            esac
+            
+            systemctl enable docker
+            systemctl start docker
+            print_success "Docker installed"
+        fi
+        
+        echo ""
+    fi
+}
+
+# Configure environment file
+configure_env() {
+    local DOMAIN=$1
+    local EMAIL=$2
+    
+    # Create .env from example if needed
+    if [ ! -f .env ]; then
+        if [ -f .env.example ]; then
+            cp .env.example .env
+            print_success "Created .env file"
+        else
+            print_error ".env.example not found"
+            exit 1
+        fi
+    fi
+    
+    # Add/update deployment mode variables
+    if grep -q "^DEPLOYMENT_MODE=" .env; then
+        sed -i "s/^DEPLOYMENT_MODE=.*/DEPLOYMENT_MODE=host_nginx/" .env
+    else
+        echo "DEPLOYMENT_MODE=host_nginx" >> .env
+    fi
+    
+    if grep -q "^USE_DOCKER_COMPOSE_SSL=" .env; then
+        sed -i "s/^USE_DOCKER_COMPOSE_SSL=.*/USE_DOCKER_COMPOSE_SSL=false/" .env
+    else
+        echo "USE_DOCKER_COMPOSE_SSL=false" >> .env
+    fi
+    
+    if grep -q "^ENABLE_SSL=" .env; then
+        sed -i "s/^ENABLE_SSL=.*/ENABLE_SSL=true/" .env
+    else
+        echo "ENABLE_SSL=true" >> .env
+    fi
+    
+    # Find available port
+    APP_PORT=5000
+    while ss -tuln 2>/dev/null | grep -q ":$APP_PORT "; do
+        ((APP_PORT++))
+    done
+    sed -i "s/^APP_HOST_PORT=.*/APP_HOST_PORT=$APP_PORT/" .env
+    
+    # Set domain and email if provided
+    if [ -n "$DOMAIN" ]; then
+        sed -i "s/^APP_DOMAIN=.*/APP_DOMAIN=$DOMAIN/" .env
+    fi
+    
+    if [ -n "$EMAIL" ]; then
+        sed -i "s/^LETSENCRYPT_EMAIL=.*/LETSENCRYPT_EMAIL=$EMAIL/" .env
+    fi
+}
+
 # Main deployment function
 main() {
     print_header "ISP Manager - Automated Deployment"
@@ -903,9 +1041,19 @@ main() {
     SKIP_BUILD=false
     SKIP_SSL=false
     SSL_PROVISIONED=false
+    SETUP_DOMAIN=""
+    SETUP_EMAIL=""
     
     while [[ $# -gt 0 ]]; do
         case $1 in
+            --domain)
+                SETUP_DOMAIN="$2"
+                shift 2
+                ;;
+            --email)
+                SETUP_EMAIL="$2"
+                shift 2
+                ;;
             --rebuild)
                 REBUILD=true
                 shift
@@ -919,20 +1067,27 @@ main() {
                 shift
                 ;;
             --help)
-                echo "Usage: ./deploy.sh [OPTIONS]"
+                echo "Usage: sudo ./deploy.sh --domain DOMAIN --email EMAIL [OPTIONS]"
                 echo ""
-                echo "Options:"
-                echo "  --rebuild      Force rebuild of Docker images"
-                echo "  --skip-build   Skip building, just restart services"
-                echo "  --skip-ssl     Skip automated SSL provisioning"
-                echo "  --help         Show this help message"
+                echo "Required (for first-time setup):"
+                echo "  --domain DOMAIN    Your domain name (e.g., isp.example.com)"
+                echo "  --email EMAIL      Email for SSL certificates"
+                echo ""
+                echo "Optional:"
+                echo "  --rebuild          Force rebuild of Docker images"
+                echo "  --skip-build       Skip building, just restart services"
+                echo "  --skip-ssl         Skip automated SSL provisioning"
+                echo "  --help             Show this help message"
                 echo ""
                 echo "Features:"
+                echo "  ✓ Auto-installs nginx, certbot, Docker if missing"
+                echo "  ✓ Auto-configures environment"
+                echo "  ✓ Auto-provisions SSL certificates"
                 echo "  ✓ Automatic port conflict resolution"
-                echo "  ✓ Automatic SSL provisioning (existing_nginx mode)"
-                echo "  ✓ Automatic error recovery"
                 echo "  ✓ Service health monitoring"
-                echo "  ✓ Isolated Docker network"
+                echo ""
+                echo "Example:"
+                echo "  sudo ./deploy.sh --domain isp.example.com --email admin@example.com"
                 exit 0
                 ;;
             *)
@@ -948,6 +1103,18 @@ main() {
         print_error "Cannot use --rebuild and --skip-build together"
         print_info "Use --help for usage information"
         exit 1
+    fi
+    
+    # Auto-setup: Install nginx, certbot, docker if missing (requires root)
+    if [ -n "$SETUP_DOMAIN" ] || [ -n "$SETUP_EMAIL" ] || ! command_exists nginx || ! command_exists certbot || ! command_exists docker; then
+        if [ "$EUID" -ne 0 ]; then
+            print_error "First-time setup requires root privileges"
+            print_info "Please run: sudo ./deploy.sh --domain $SETUP_DOMAIN --email $SETUP_EMAIL"
+            exit 1
+        fi
+        
+        auto_setup_dependencies
+        configure_env "$SETUP_DOMAIN" "$SETUP_EMAIL"
     fi
     
     # Source .env at top-level to make DEPLOYMENT_MODE available
