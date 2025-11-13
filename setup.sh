@@ -29,19 +29,23 @@ print_info() { echo -e "${BLUE}ℹ${NC} $1"; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 main() {
-    clear
-    print_header "ISP Manager - Setup"
-    
     # Parse arguments
     APP_DOMAIN=""
     APP_EMAIL=""
+    AUTO_MODE=false
     
     while [[ $# -gt 0 ]]; do
         case $1 in
             --domain) APP_DOMAIN="$2"; shift 2 ;;
             --email) APP_EMAIL="$2"; shift 2 ;;
+            --auto) AUTO_MODE=true; shift ;;
             --help)
-                echo "Usage: sudo ./setup.sh --domain DOMAIN --email EMAIL"
+                echo "Usage: sudo ./setup.sh [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --domain DOMAIN    Set domain name"
+                echo "  --email EMAIL      Set email for SSL"
+                echo "  --auto             Non-interactive mode (for deploy.sh)"
                 echo ""
                 echo "Example: sudo ./setup.sh --domain isp.example.com --email admin@example.com"
                 exit 0
@@ -50,10 +54,17 @@ main() {
         esac
     done
     
+    # Only clear screen if not in auto mode
+    if [ "$AUTO_MODE" = false ]; then
+        clear
+    fi
+    
+    print_header "ISP Manager - Setup"
+    
     # Require root
     if [ "$EUID" -ne 0 ]; then
         print_error "This script must be run as root"
-        print_info "Please run: sudo ./setup.sh --domain $APP_DOMAIN --email $APP_EMAIL"
+        print_info "Please run: sudo ./setup.sh"
         exit 1
     fi
     
@@ -192,26 +203,28 @@ main() {
     
     print_success "Environment configured"
     
-    # Summary
-    print_header "Setup Complete!"
-    
-    echo ""
-    print_success "✓ Nginx installed and running"
-    print_success "✓ Certbot installed for SSL"
-    print_success "✓ Docker installed"
-    print_success "✓ Environment configured"
-    echo ""
-    
-    print_info "Configuration:"
-    echo "  • Deployment Mode: Host Nginx"
-    echo "  • App Port: $APP_PORT"
-    [ -n "$APP_DOMAIN" ] && echo "  • Domain: $APP_DOMAIN"
-    [ -n "$APP_EMAIL" ] && echo "  • Email: $APP_EMAIL"
-    echo ""
-    
-    print_info "Next step:"
-    echo "  Run: ./deploy.sh"
-    echo ""
+    # Summary (skip in auto mode)
+    if [ "$AUTO_MODE" = false ]; then
+        print_header "Setup Complete!"
+        
+        echo ""
+        print_success "✓ Nginx installed and running"
+        print_success "✓ Certbot installed for SSL"
+        print_success "✓ Docker installed"
+        print_success "✓ Environment configured"
+        echo ""
+        
+        print_info "Configuration:"
+        echo "  • Deployment Mode: Host Nginx"
+        echo "  • App Port: $APP_PORT"
+        [ -n "$APP_DOMAIN" ] && echo "  • Domain: $APP_DOMAIN"
+        [ -n "$APP_EMAIL" ] && echo "  • Email: $APP_EMAIL"
+        echo ""
+        
+        print_info "Next step:"
+        echo "  Run: ./deploy.sh"
+        echo ""
+    fi
 }
 
 main "$@"
