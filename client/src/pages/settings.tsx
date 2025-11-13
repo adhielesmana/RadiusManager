@@ -165,14 +165,11 @@ export default function Settings() {
       const radiusAuthPort = (document.getElementById('radius-auth-port') as HTMLInputElement)?.value;
       const radiusAcctPort = (document.getElementById('radius-acct-port') as HTMLInputElement)?.value;
 
-      await apiRequest('/api/settings/radius', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          radiusHost,
-          radiusSecret,
-          radiusAuthPort: radiusAuthPort ? parseInt(radiusAuthPort) : null,
-          radiusAcctPort: radiusAcctPort ? parseInt(radiusAcctPort) : null,
-        }),
+      await apiRequest('PATCH', '/api/settings/radius', {
+        radiusHost,
+        radiusSecret,
+        radiusAuthPort: radiusAuthPort ? parseInt(radiusAuthPort) : null,
+        radiusAcctPort: radiusAcctPort ? parseInt(radiusAcctPort) : null,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
@@ -198,9 +195,7 @@ export default function Settings() {
     try {
       setResettingRadius(true);
 
-      await apiRequest('/api/settings/radius/reset', {
-        method: 'POST',
-      });
+      await apiRequest('POST', '/api/settings/radius/reset');
 
       // Clear input fields
       (document.getElementById('radius-host') as HTMLInputElement).value = '';
