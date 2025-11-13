@@ -14,6 +14,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { CompanyGroupDialog } from "@/components/company-group-dialog";
 
+interface DatabaseStatus {
+  connected: boolean;
+  host?: string;
+  database?: string;
+  responseTime?: number;
+  timestamp?: string;
+  error?: string;
+}
+
+interface RadiusStatus {
+  connected: boolean;
+  host?: string;
+  port?: number;
+  secret?: string;
+  type?: string;
+  responseTime?: number;
+  userCount?: number;
+  timestamp?: string;
+  error?: string;
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const [selectedCurrency, setSelectedCurrency] = useState<string>("IDR");
@@ -31,12 +52,12 @@ export default function Settings() {
   });
 
   // Connection status queries
-  const { data: dbStatus, isLoading: dbStatusLoading, refetch: refetchDbStatus } = useQuery({
+  const { data: dbStatus, isLoading: dbStatusLoading, refetch: refetchDbStatus } = useQuery<DatabaseStatus>({
     queryKey: ['/api/status/database'],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  const { data: radiusStatus, isLoading: radiusStatusLoading, refetch: refetchRadiusStatus } = useQuery({
+  const { data: radiusStatus, isLoading: radiusStatusLoading, refetch: refetchRadiusStatus } = useQuery<RadiusStatus>({
     queryKey: ['/api/status/radius'],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
