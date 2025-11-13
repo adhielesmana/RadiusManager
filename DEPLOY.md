@@ -4,7 +4,7 @@
 
 ### Step 1: Setup (Run Once)
 ```bash
-sudo ./setup.sh --domain isp.maxnetplus.id --email adhielesmana@gmail.com
+./setup.sh --domain isp.maxnetplus.id --email adhielesmana@gmail.com
 ```
 
 This installs:
@@ -15,7 +15,7 @@ This installs:
 
 ### Step 2: Deploy
 ```bash
-sudo ./deploy.sh
+./deploy.sh
 ```
 
 This will:
@@ -28,6 +28,28 @@ This will:
 
 Your app will be accessible at:
 **https://isp.maxnetplus.id**
+
+---
+
+## Fast Nginx Updates (No Docker Rebuild)
+
+When you only need to update nginx configuration (no app changes):
+
+```bash
+./deploy.sh --nginx-only
+```
+
+This will:
+- ✓ Update nginx site configuration
+- ✓ Reload nginx
+- ✓ Update SSL if needed
+- ✓ **Skip Docker rebuild** (saves time!)
+
+Perfect for:
+- Changing domain
+- Updating SSL settings
+- Modifying proxy settings
+- Testing nginx configuration
 
 ---
 
@@ -48,9 +70,9 @@ Internet → Nginx (Host:80/443) → Docker App (localhost:5002)
 ## Troubleshooting
 
 ### App runs on localhost:5002 but not on domain?
-You forgot to run with `sudo`. Run:
+Nginx configuration needs write permissions. If you get permission errors:
 ```bash
-sudo ./deploy.sh
+sudo ./deploy.sh --nginx-only
 ```
 
 ### SSL certificate failed?

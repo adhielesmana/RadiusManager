@@ -61,11 +61,11 @@ main() {
     
     print_header "ISP Manager - Setup"
     
-    # Require root
+    # Check if we have permission to install packages
     if [ "$EUID" -ne 0 ]; then
-        print_error "This script must be run as root"
-        print_info "Please run: sudo ./setup.sh"
-        exit 1
+        print_warning "Not running as root - some operations may fail"
+        print_info "If installation fails, try: sudo ./setup.sh"
+        echo ""
     fi
     
     # Detect OS

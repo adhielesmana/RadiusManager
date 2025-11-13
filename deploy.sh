@@ -1041,6 +1041,7 @@ main() {
     SKIP_BUILD=false
     SKIP_SSL=false
     SSL_PROVISIONED=false
+    NGINX_ONLY=false
     SETUP_DOMAIN=""
     SETUP_EMAIL=""
     
@@ -1066,16 +1067,20 @@ main() {
                 SKIP_SSL=true
                 shift
                 ;;
+            --nginx-only)
+                NGINX_ONLY=true
+                SKIP_BUILD=true
+                shift
+                ;;
             --help)
-                echo "Usage: sudo ./deploy.sh --domain DOMAIN --email EMAIL [OPTIONS]"
+                echo "Usage: ./deploy.sh [OPTIONS]"
                 echo ""
-                echo "Required (for first-time setup):"
+                echo "Options:"
                 echo "  --domain DOMAIN    Your domain name (e.g., isp.example.com)"
                 echo "  --email EMAIL      Email for SSL certificates"
-                echo ""
-                echo "Optional:"
                 echo "  --rebuild          Force rebuild of Docker images"
                 echo "  --skip-build       Skip building, just restart services"
+                echo "  --nginx-only       Only update nginx config (skip Docker rebuild)"
                 echo "  --skip-ssl         Skip automated SSL provisioning"
                 echo "  --help             Show this help message"
                 echo ""
@@ -1084,10 +1089,10 @@ main() {
                 echo "  ✓ Auto-configures environment"
                 echo "  ✓ Auto-provisions SSL certificates"
                 echo "  ✓ Automatic port conflict resolution"
-                echo "  ✓ Service health monitoring"
                 echo ""
-                echo "Example:"
-                echo "  sudo ./deploy.sh --domain isp.example.com --email admin@example.com"
+                echo "Examples:"
+                echo "  ./deploy.sh --domain isp.example.com --email admin@example.com"
+                echo "  ./deploy.sh --nginx-only    # Fast nginx config update only"
                 exit 0
                 ;;
             *)
@@ -1105,12 +1110,12 @@ main() {
         exit 1
     fi
     
-    # Auto-setup: Install nginx, certbot, docker if missing (requires root)
+    # Auto-setup: Install nginx, certbot, docker if missing
     if [ -n "$SETUP_DOMAIN" ] || [ -n "$SETUP_EMAIL" ] || ! command_exists nginx || ! command_exists certbot || ! command_exists docker; then
-        if [ "$EUID" -ne 0 ]; then
-            print_error "First-time setup requires root privileges"
-            print_info "Please run: sudo ./deploy.sh --domain $SETUP_DOMAIN --email $SETUP_EMAIL"
-            exit 1
+        # Check if we can install packages (may need root)
+        if ! command_exists nginx || ! command_exists certbot || ! command_exists docker; then
+            print_warning "Missing dependencies detected"
+            print_info "Installing nginx, certbot, or docker may require root/sudo"
         fi
         
         auto_setup_dependencies
@@ -1125,32 +1130,51 @@ main() {
     fi
     
     # Run deployment steps
-    check_prerequisites
-    validate_ports
-    cleanup_stale_resources
-    stop_containers
-    
-    if [ "$SKIP_BUILD" = false ]; then
-        build_images
+    if [ "$NGINX_ONLY" = false ]; then
+        check_prerequisites
+        validate_ports
+        cleanup_stale_resources
+        stop_containers
+        
+        if [ "$SKIP_BUILD" = false ]; then
+            build_images
+        else
+            print_info "Skipping build as requested"
+        fi
+        
+        # Start services with retry
+        if ! start_services; then
+            print_error "Failed to start services"
+            print_info "Please check the logs and try again"
+            exit 1
+        fi
+        
+        wait_for_services
     else
-        print_info "Skipping build as requested"
+        print_info "Nginx-only mode: Skipping Docker container operations"
+        
+        # Just source .env to get configuration
+        if [ -f .env ]; then
+            set -a
+            source .env
+            set +a
+        fi
+        
+        # Set deployment mode variables
+        if [ "$DEPLOYMENT_MODE" = "host_nginx" ]; then
+            COMPOSE_FILES="-f docker-compose.yml"
+            SSL_MODE="HOST_NGINX"
+            SETUP_HOST_NGINX=true
+        fi
     fi
-    
-    # Start services with retry
-    if ! start_services; then
-        print_error "Failed to start services"
-        print_info "Please check the logs and try again"
-        exit 1
-    fi
-    
-    wait_for_services
     
     # Setup Host Nginx (if in host_nginx mode)
     if [ "$SETUP_HOST_NGINX" = "true" ]; then
-        # Require root for nginx configuration
-        if [ "$EUID" -ne 0 ]; then
-            print_error "Host nginx setup requires root privileges"
-            print_info "Please run: sudo ./deploy.sh"
+        # Check write permissions to nginx directory (may need root)
+        if [ ! -w "/etc/nginx/sites-available" ] 2>/dev/null; then
+            print_error "Cannot write to /etc/nginx/sites-available"
+            print_info "You may need to run as root or with sudo"
+            print_info "Run: sudo ./deploy.sh --nginx-only"
             exit 1
         fi
         
