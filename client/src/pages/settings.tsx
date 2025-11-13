@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Settings, CompanyGroup } from "@shared/schema";
 import { CURRENCIES } from "@shared/currencies";
 import { useState, useEffect, useRef } from "react";
-import { Loader2, Upload, X, Plus, Pencil } from "lucide-react";
+import { Loader2, Upload, X, Plus, Pencil, CheckCircle2, XCircle, RefreshCw, Database, Wifi } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { CompanyGroupDialog } from "@/components/company-group-dialog";
@@ -28,6 +28,17 @@ export default function Settings() {
 
   const { data: companyGroups = [], isLoading: groupsLoading } = useQuery<CompanyGroup[]>({
     queryKey: ['/api/company-groups'],
+  });
+
+  // Connection status queries
+  const { data: dbStatus, isLoading: dbStatusLoading, refetch: refetchDbStatus } = useQuery({
+    queryKey: ['/api/status/database'],
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  const { data: radiusStatus, isLoading: radiusStatusLoading, refetch: refetchRadiusStatus } = useQuery({
+    queryKey: ['/api/status/radius'],
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   useEffect(() => {
@@ -124,10 +135,170 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="page-settings">
       <div>
         <h1 className="text-2xl font-semibold" data-testid="heading-settings">Settings</h1>
         <p className="text-sm text-muted-foreground">Configure your ISP management system</p>
+      </div>
+
+      {/* Connection Status Section */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Database Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Database Connection
+            </CardTitle>
+            <CardDescription>PostgreSQL database status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {dbStatusLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Checking connection...</span>
+              </div>
+            ) : dbStatus?.connected ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" data-testid="icon-db-connected" />
+                  <span className="font-medium text-green-600">Connected</span>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Host:</span>
+                    <span className="font-mono" data-testid="text-db-host">{dbStatus.host}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Database:</span>
+                    <span className="font-mono" data-testid="text-db-name">{dbStatus.database}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Response Time:</span>
+                    <span className="font-mono" data-testid="text-db-response">{dbStatus.responseTime}ms</span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchDbStatus()}
+                  className="w-full"
+                  data-testid="button-refresh-db-status"
+                >
+                  <RefreshCw className="h-3 w-3 mr-2" />
+                  Refresh Status
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-5 w-5 text-red-600" data-testid="icon-db-disconnected" />
+                  <span className="font-medium text-red-600">Disconnected</span>
+                </div>
+                <p className="text-sm text-muted-foreground" data-testid="text-db-error">
+                  {dbStatus?.error || 'Unable to connect to database'}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchDbStatus()}
+                  className="w-full"
+                  data-testid="button-retry-db-connection"
+                >
+                  <RefreshCw className="h-3 w-3 mr-2" />
+                  Retry Connection
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* FreeRADIUS Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Wifi className="h-5 w-5" />
+              FreeRADIUS Connection
+            </CardTitle>
+            <CardDescription>RADIUS server status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {radiusStatusLoading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Checking connection...</span>
+              </div>
+            ) : radiusStatus?.connected ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" data-testid="icon-radius-connected" />
+                  <span className="font-medium text-green-600">Connected</span>
+                  <Badge variant="outline" className="ml-auto" data-testid="badge-radius-type">
+                    {radiusStatus.type}
+                  </Badge>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Host:</span>
+                    <span className="font-mono" data-testid="text-radius-host">{radiusStatus.host}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Port:</span>
+                    <span className="font-mono" data-testid="text-radius-port">{radiusStatus.port}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Secret:</span>
+                    <span className="font-mono" data-testid="text-radius-secret">{radiusStatus.secret}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">RADIUS Users:</span>
+                    <span className="font-mono" data-testid="text-radius-users">{radiusStatus.userCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Response Time:</span>
+                    <span className="font-mono" data-testid="text-radius-response">{radiusStatus.responseTime}ms</span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchRadiusStatus()}
+                  className="w-full"
+                  data-testid="button-refresh-radius-status"
+                >
+                  <RefreshCw className="h-3 w-3 mr-2" />
+                  Refresh Status
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-5 w-5 text-red-600" data-testid="icon-radius-disconnected" />
+                  <span className="font-medium text-red-600">Disconnected</span>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Host:</span>
+                    <span className="font-mono" data-testid="text-radius-host-error">{radiusStatus?.host || 'Unknown'}</span>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground" data-testid="text-radius-error">
+                  {radiusStatus?.error || 'Unable to connect to RADIUS server'}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchRadiusStatus()}
+                  className="w-full"
+                  data-testid="button-retry-radius-connection"
+                >
+                  <RefreshCw className="h-3 w-3 mr-2" />
+                  Retry Connection
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
