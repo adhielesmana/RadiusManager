@@ -23,7 +23,15 @@ Key features and design decisions include:
 - **Company Group System**: Facilitates multi-company group management, impacting subscription ID generation.
 - **FTTH Infrastructure Management**: Hierarchical system for POPs, OLTs, PON Ports, Distribution Boxes, and ONUs, including GPS tracking, capacity planning, and vendor-specific OLT configurations (ZTE C320 GPON, HIOSO EPON). Includes an interactive Leaflet map for coverage visualization. All FTTH management pages feature both read-only detail view and edit capabilities, with dedicated detail dialogs showing comprehensive information about each infrastructure component.
 - **Router/NAS Management**: CRUD operations for Network Access Servers (routers) with secure RADIUS secret management and type validation (MikroTik, Cisco, Ubiquiti, Other).
-- **Deployment**: Supports **dual-mode deployment architecture** optimized for different server scenarios:
+- **Deployment**: Supports **dual-mode deployment architecture** with **intelligent nginx auto-detection**:
+  
+  ### **Intelligent Nginx Detection**
+  - **Auto-detects nginx installations**: Host (non-Docker) or Docker containers
+  - **Host nginx detected** → Automatically configures Host Nginx mode, adjusts ports to avoid conflicts
+  - **Docker nginx detected** → Distinguishes update vs fresh install, offers appropriate options
+  - **No nginx detected** → Presents choice between Host or Docker nginx deployment
+  - **Zero manual intervention**: Port conflicts automatically resolved
+  - **No sudo commands**: All privilege requirements handled via clear error messages
   
   ### **Mode 1: Host Nginx (Multi-App Servers)** - Recommended
   - Nginx installed on host OS (not Docker) via `install-host-nginx.sh`
@@ -44,11 +52,14 @@ Key features and design decisions include:
   - **Best for**: Dedicated ISP Manager servers, testing/dev environments
   
   ### **Deployment Features** (Both Modes):
-  - **Zero-Configuration Setup**: Run `select-deployment-mode.sh` to choose mode
+  - **Automatic Nginx Detection**: `detect-nginx.sh` identifies existing nginx installations
+  - **Automatic Port Adjustment**: `adjust-app-port.sh` resolves port conflicts (5000-5100 range)
+  - **Zero-Configuration Setup**: Run `select-deployment-mode.sh` for intelligent mode selection
   - **Automatic SSL Provisioning**: Let's Encrypt certificates via certbot (host) or container
-  - **Intelligent Port Detection**: Scans running containers to avoid conflicts
+  - **Update Detection**: Distinguishes fresh installs from updates to preserve configurations
   - **Health Checks**: Automatic container restart on failure
   - **Production-Ready**: Runs in production mode (Node.js 20, npm start)
+  - **Privilege-aware**: Root checks with clear messaging, no inline sudo commands
 
 ## External Dependencies
 - **PostgreSQL**: Relational database for application and FreeRADIUS data.

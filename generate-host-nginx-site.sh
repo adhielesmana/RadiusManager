@@ -29,11 +29,11 @@ print_info() {
     echo -e "${BLUE}ℹ $1${NC}"
 }
 
-# Check if running as root
+# Check if running with root privileges
 if [ "$EUID" -ne 0 ]; then
-    print_error "This script must be run as root"
+    print_error "This script requires root privileges to write to /etc/nginx/"
     echo ""
-    echo "Please run: sudo ./generate-host-nginx-site.sh"
+    echo "Please run this script as root or with appropriate privileges"
     exit 1
 fi
 

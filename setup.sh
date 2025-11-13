@@ -993,25 +993,35 @@ install_docker() {
             exit 1
         fi
         
+        # Check if running with appropriate privileges for installation
+        if [ "$EUID" -ne 0 ]; then
+            print_error "Docker installation requires root privileges"
+            echo ""
+            echo "Please run this script with appropriate privileges or install Docker manually:"
+            echo "  Visit: https://docs.docker.com/get-docker/"
+            echo ""
+            exit 1
+        fi
+        
         case $DISTRO in
             ubuntu|debian)
-                sudo apt-get update
-                sudo apt-get install -y ca-certificates curl gnupg lsb-release
-                sudo mkdir -p /etc/apt/keyrings
-                curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-                sudo apt-get update
-                sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-                sudo systemctl start docker
-                sudo systemctl enable docker
+                apt-get update
+                apt-get install -y ca-certificates curl gnupg lsb-release
+                mkdir -p /etc/apt/keyrings
+                curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+                apt-get update
+                apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                systemctl start docker
+                systemctl enable docker
                 print_success "Docker installed successfully"
                 ;;
             centos|rhel|fedora)
-                sudo yum install -y yum-utils
-                sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-                sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-                sudo systemctl start docker
-                sudo systemctl enable docker
+                yum install -y yum-utils
+                yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+                yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                systemctl start docker
+                systemctl enable docker
                 print_success "Docker installed successfully"
                 ;;
             *)
@@ -1022,9 +1032,14 @@ install_docker() {
         esac
         
         # Add current user to docker group
-        print_info "Adding current user to docker group..."
-        sudo usermod -aG docker $USER
-        print_warning "You may need to log out and back in for group changes to take effect"
+        if [ -n "$SUDO_USER" ]; then
+            print_info "Adding user $SUDO_USER to docker group..."
+            usermod -aG docker $SUDO_USER
+            print_warning "User will need to log out and back in for group changes to take effect"
+        elif [ "$EUID" -eq 0 ]; then
+            print_warning "Running as root - skipping docker group assignment"
+            print_info "If running as a regular user with privileges, docker group will be handled automatically"
+        fi
     else
         print_error "Automatic Docker installation is only supported on Linux"
         print_info "Please install Docker Desktop from https://docs.docker.com/get-docker/"

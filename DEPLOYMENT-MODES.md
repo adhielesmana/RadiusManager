@@ -1,6 +1,30 @@
 # ISP Manager - Deployment Modes Guide
 
-This guide explains the two deployment architectures available for ISP Manager and helps you choose the right one.
+This guide explains the two deployment architectures available for ISP Manager with **intelligent automatic nginx detection**.
+
+## ✨ Automatic Nginx Detection
+
+ISP Manager now features **intelligent nginx detection** that automatically configures the deployment mode based on your server environment:
+
+### 🎯 Detection Scenarios:
+
+**1. Nginx Detected on Host (Non-Docker)**
+- ✅ **Automatically configures for Host Nginx mode**
+- ✅ Skips manual mode selection
+- ✅ Automatically adjusts ports to avoid conflicts
+- ✅ Updates nginx configuration only
+- ℹ️ Perfect for servers with existing nginx installations
+
+**2. Nginx Detected in Docker**
+- **If Update Deployment**: Continues seamlessly
+- **If Fresh Install**: Offers options:
+  - Remove existing nginx container and continue
+  - Cancel deployment (preserve existing setup)
+
+**3. No Nginx Detected**
+- Presents interactive choice:
+  - Install nginx on host (multi-app mode)
+  - Use Docker nginx (single-app mode)
 
 ## 🎯 Deployment Modes
 
@@ -140,18 +164,22 @@ Docker Compose Stack
 
 ## 🚀 Quick Start
 
-### For Multi-App Servers (Recommended):
+### Automatic Detection (Recommended):
 ```bash
-chmod +x select-deployment-mode.sh install-host-nginx.sh
-./select-deployment-mode.sh
-# Choose option 1 and follow prompts
+./setup.sh --domain your-domain.com --email your@email.com
+# Nginx detection runs automatically
+# Deployment mode configured based on detection
+./deploy.sh
 ```
 
-### For Single-App Servers:
+### Manual Mode Selection:
 ```bash
 chmod +x select-deployment-mode.sh
 ./select-deployment-mode.sh
-# Choose option 2 and follow prompts
+# Intelligent detection runs automatically
+# If nginx found on host → auto-configures Host Nginx mode
+# If nginx in Docker → handles update/fresh install
+# If no nginx → offers choice between modes
 ```
 
 ---
@@ -210,7 +238,7 @@ A: Both are equally secure when configured properly. Mode 1 (Host Nginx) follows
 A: Yes, both modes support manual certificate management. See SSL-CERTIFICATE-PATHS.md for details.
 
 **Q: What if I already have nginx on the host?**
-A: Perfect! Use Mode 1 (Host Nginx). The installer will detect existing nginx and configure it properly.
+A: Perfect! The deployment system will **automatically detect** your host nginx installation and configure for Host Nginx mode. No manual selection needed - port conflicts are automatically avoided!
 
 **Q: Can I add more apps later in Host Nginx mode?**
 A: Yes! That's the main advantage. Just deploy new apps on different ports (5001, 5002...) and create new nginx site configs.

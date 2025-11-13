@@ -703,9 +703,9 @@ if ! command -v openssl &> /dev/null; then
 fi
 
 if [ ! -w /etc/letsencrypt ] 2>/dev/null && [ ! -e /etc/letsencrypt ]; then
-    echo "Error: This script must be run with root/sudo permissions"
+    echo "Error: This script must be run with appropriate privileges"
     echo "It needs to access /etc/letsencrypt"
-    echo "Please run: sudo $0"
+    echo "Please run this script with root privileges"
     exit 1
 fi
 
