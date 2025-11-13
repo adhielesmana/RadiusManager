@@ -23,25 +23,32 @@ Key features and design decisions include:
 - **Company Group System**: Facilitates multi-company group management, impacting subscription ID generation.
 - **FTTH Infrastructure Management**: Hierarchical system for POPs, OLTs, PON Ports, Distribution Boxes, and ONUs, including GPS tracking, capacity planning, and vendor-specific OLT configurations (ZTE C320 GPON, HIOSO EPON). Includes an interactive Leaflet map for coverage visualization. All FTTH management pages feature both read-only detail view and edit capabilities, with dedicated detail dialogs showing comprehensive information about each infrastructure component.
 - **Router/NAS Management**: CRUD operations for Network Access Servers (routers) with secure RADIUS secret management and type validation (MikroTik, Cisco, Ubiquiti, Other).
-- **Deployment**: Designed for Docker Compose orchestration of PostgreSQL, FreeRADIUS, and the ISP Manager application. Supports flexible Nginx integration with **zero-configuration multi-app deployment**:
-  - **Automatic Docker Container Detection**: 
-    - Scans all running Docker containers and detects exposed ports (any IP binding)
-    - Extracts actual container names and port mappings
-    - Finds domains from existing nginx configs
-    - Reports skipped containers with explanations
-    - Zero manual typing for existing containers
-  - **Automatic Network Connection**: Auto-detects existing nginx containers and connects isp-manager-app to shared networks
-  - **Intelligent SSL Certificate Management**: 
-    - Checks existing certificate validity on host (>30 days = skip provisioning)
-    - Auto-renews certificates expiring in <30 days
-    - Only provisions new certificates when missing
-    - Automatically copies certificates from host into nginx container
-    - Shows certificate expiry dates for transparency
-  - **Nginx Config Patching**: Intelligently fixes nginx.conf to comment out global SSL directives while preserving per-domain certificates (uses copy-out/edit/copy-back method to avoid "Resource busy" errors)
-  - **Multi-App SSL Provisioning**: Generates and installs SSL certificates for multiple domains via Let's Encrypt
-  - **Smart Detection**: Identifies nginx containers by public port exposure (80/443) and validates connectivity
-  - **Graceful Degradation**: Safely handles missing certificates, config errors, and network issues with automatic rollback
-  - **Production-Ready**: Runs in production mode (Node.js 20, npm start) with health checks and automatic restarts
+- **Deployment**: Supports **dual-mode deployment architecture** optimized for different server scenarios:
+  
+  ### **Mode 1: Host Nginx (Multi-App Servers)** - Recommended
+  - Nginx installed on host OS (not Docker) via `install-host-nginx.sh`
+  - Multiple applications share one nginx instance
+  - Each app runs in Docker on unique port (5000, 5001, 5002...)
+  - Host nginx proxies to `localhost:PORT` for each app
+  - All SSL certificates managed on host at `/etc/letsencrypt/` via certbot
+  - Site configs in `/etc/nginx/sites-available/` and `/etc/nginx/sites-enabled/`
+  - Clean separation, professional architecture
+  - **Best for**: Production servers running multiple services
+  
+  ### **Mode 2: Docker Nginx (Single-App Deployment)**
+  - Self-contained docker-compose with dedicated nginx service
+  - Everything isolated in Docker containers
+  - Nginx container handles SSL and reverse proxy
+  - SSL certificates in Docker volumes
+  - No interaction with host or other services
+  - **Best for**: Dedicated ISP Manager servers, testing/dev environments
+  
+  ### **Deployment Features** (Both Modes):
+  - **Zero-Configuration Setup**: Run `select-deployment-mode.sh` to choose mode
+  - **Automatic SSL Provisioning**: Let's Encrypt certificates via certbot (host) or container
+  - **Intelligent Port Detection**: Scans running containers to avoid conflicts
+  - **Health Checks**: Automatic container restart on failure
+  - **Production-Ready**: Runs in production mode (Node.js 20, npm start)
 
 ## External Dependencies
 - **PostgreSQL**: Relational database for application and FreeRADIUS data.
