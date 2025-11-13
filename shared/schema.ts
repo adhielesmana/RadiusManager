@@ -126,6 +126,11 @@ export const settings = pgTable("settings", {
   id: serial("id").primaryKey(),
   currencyCode: varchar("currency_code", { length: 3 }).notNull().default('IDR'), // ISO 4217 currency code
   logoUrl: text("logo_url"), // Changed to text to support base64 encoded images
+  // FreeRADIUS Configuration (nullable = use hardcoded defaults)
+  radiusHost: varchar("radius_host", { length: 255 }), // null = use 'freeradius' (local container)
+  radiusSecret: varchar("radius_secret", { length: 255 }), // null = use 'testing123'
+  radiusAuthPort: integer("radius_auth_port"), // null = use 1812
+  radiusAcctPort: integer("radius_acct_port"), // null = use 1813
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
