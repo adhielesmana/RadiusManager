@@ -43,6 +43,19 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Helper function to get RADIUS configuration from database with hardcoded defaults
+async function getRadiusConfig() {
+  const settings = await storage.getSettings();
+  
+  return {
+    host: settings?.radiusHost || 'freeradius', // Default to local container
+    secret: settings?.radiusSecret || 'testing123', // Default secret
+    authPort: settings?.radiusAuthPort || 1812, // Default auth port
+    acctPort: settings?.radiusAcctPort || 1813, // Default accounting port
+    isCustom: !!(settings?.radiusHost || settings?.radiusSecret || settings?.radiusAuthPort || settings?.radiusAcctPort)
+  };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication Endpoints
   app.post("/api/auth/login", async (req, res) => {
@@ -677,9 +690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/status/radius", async (_req, res) => {
     try {
-      const radiusHost = process.env.RADIUS_HOST || 'freeradius';
-      const radiusSecret = process.env.RADIUS_SECRET || 'testing123';
-      const radiusAuthPort = parseInt(process.env.RADIUS_AUTH_PORT || '1812');
+      const radiusConfig = await getRadiusConfig();
       
       // Check if RADIUS server is reachable by querying radcheck table
       const startTime = Date.now();
@@ -688,18 +699,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({
         connected: true,
-        host: radiusHost,
-        port: radiusAuthPort,
-        secret: radiusSecret.substring(0, 3) + '***', // Masked for security
-        type: radiusHost === 'freeradius' ? 'Local Container' : 'External Server',
+        host: radiusConfig.host,
+        port: radiusConfig.authPort,
+        secret: radiusConfig.secret.substring(0, 3) + '***', // Masked for security
+        type: radiusConfig.isCustom ? 'External Server' : 'Local Container',
         responseTime,
         userCount: parseInt(result.rows[0].count),
         timestamp: new Date().toISOString()
       });
     } catch (error: any) {
+      const radiusConfig = await getRadiusConfig();
       res.status(503).json({
         connected: false,
-        host: process.env.RADIUS_HOST || 'freeradius',
+        host: radiusConfig.host,
         error: error.message,
         timestamp: new Date().toISOString()
       });
