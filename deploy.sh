@@ -275,23 +275,53 @@ check_prerequisites() {
         SETUP_HOST_NGINX=true
         print_info "Deployment Mode: HOST NGINX (nginx on host, backend on port ${APP_HOST_PORT:-5000}, domain: ${APP_DOMAIN})"
         
-        # Ensure certbot is installed for host nginx mode
+        # Ensure certbot with nginx plugin is installed for host nginx mode
         if ! command_exists certbot; then
             echo ""
             print_error "Certbot is required for Host Nginx mode but not installed"
             echo ""
-            print_info "Host Nginx mode requires certbot for SSL certificate management"
-            echo ""
-            print_info "To install certbot, run setup.sh again:"
-            echo "  sudo ./setup.sh"
-            echo ""
-            print_info "Or install certbot manually:"
-            echo "  Ubuntu/Debian: sudo apt-get install certbot python3-certbot-nginx"
-            echo "  RHEL/CentOS:   sudo yum install certbot python3-certbot-nginx"
+            print_info "To install certbot, run:"
+            echo "  ./setup.sh --domain $APP_DOMAIN --email $LETSENCRYPT_EMAIL"
             echo ""
             exit 1
         fi
-        print_success "Certbot is installed and ready"
+        
+        # Check nginx plugin
+        if ! certbot plugins 2>/dev/null | grep -q "nginx"; then
+            echo ""
+            print_error "Certbot nginx plugin is missing"
+            echo ""
+            print_info "Installing nginx plugin..."
+            
+            # Detect OS
+            if [ -f /etc/os-release ]; then
+                . /etc/os-release
+                OS=$ID
+            fi
+            
+            case "$OS" in
+                ubuntu|debian)
+                    apt-get update -qq
+                    apt-get install -y python3-certbot-nginx
+                    ;;
+                centos|rhel|rocky|almalinux)
+                    yum install -y python3-certbot-nginx
+                    ;;
+                fedora)
+                    dnf install -y python3-certbot-nginx
+                    ;;
+            esac
+            
+            # Verify
+            if certbot plugins 2>/dev/null | grep -q "nginx"; then
+                print_success "Certbot nginx plugin installed"
+            else
+                print_error "Failed to install certbot nginx plugin"
+                exit 1
+            fi
+        else
+            print_success "Certbot with nginx plugin is ready"
+        fi
     elif [ "$ENABLE_SSL" = "true" ]; then
         COMPOSE_FILES="-f docker-compose.yml -f docker-compose.ssl.yml"
         SSL_MODE="ENABLED"
@@ -942,11 +972,25 @@ auto_setup_dependencies() {
             print_success "Nginx installed"
         fi
         
-        # Install certbot if missing
-        if ! command_exists certbot; then
-            print_info "Installing certbot..."
+        # Install certbot with nginx plugin
+        CERTBOT_NGINX_INSTALLED=false
+        
+        if command_exists certbot; then
+            # Check if nginx plugin is available
+            if certbot plugins 2>/dev/null | grep -q "nginx"; then
+                print_success "Certbot nginx plugin is installed"
+                CERTBOT_NGINX_INSTALLED=true
+            else
+                print_warning "Certbot nginx plugin is missing"
+            fi
+        fi
+        
+        # Install certbot and/or nginx plugin if needed
+        if [ "$CERTBOT_NGINX_INSTALLED" = false ]; then
+            print_info "Installing certbot with nginx plugin..."
             case "$OS" in
                 ubuntu|debian)
+                    apt-get update -qq
                     apt-get install -y certbot python3-certbot-nginx
                     ;;
                 centos|rhel|rocky|almalinux)
@@ -956,7 +1000,14 @@ auto_setup_dependencies() {
                     dnf install -y certbot python3-certbot-nginx
                     ;;
             esac
-            print_success "Certbot installed"
+            
+            # Verify installation
+            if certbot plugins 2>/dev/null | grep -q "nginx"; then
+                print_success "Certbot with nginx plugin installed successfully"
+            else
+                print_error "Failed to install certbot nginx plugin"
+                exit 1
+            fi
         fi
         
         # Install Docker if missing

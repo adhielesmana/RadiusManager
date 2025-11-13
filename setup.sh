@@ -113,14 +113,32 @@ main() {
         print_success "Nginx installed"
     fi
     
-    # Install certbot
+    # Install certbot with nginx plugin
     print_header "Step 2/5: Certbot Setup"
+    
+    CERTBOT_NGINX_INSTALLED=false
+    
+    # Check if certbot is installed
     if command_exists certbot; then
-        print_success "Certbot already installed"
+        print_success "Certbot is installed"
+        
+        # Check if nginx plugin is available
+        if certbot plugins 2>/dev/null | grep -q "nginx"; then
+            print_success "Certbot nginx plugin is installed"
+            CERTBOT_NGINX_INSTALLED=true
+        else
+            print_warning "Certbot nginx plugin is missing"
+        fi
     else
-        print_info "Installing certbot..."
+        print_info "Certbot not found"
+    fi
+    
+    # Install certbot and/or nginx plugin if needed
+    if [ "$CERTBOT_NGINX_INSTALLED" = false ]; then
+        print_info "Installing certbot with nginx plugin..."
         case "$OS" in
             ubuntu|debian)
+                apt-get update -qq
                 apt-get install -y certbot python3-certbot-nginx
                 ;;
             centos|rhel|rocky|almalinux)
@@ -130,7 +148,14 @@ main() {
                 dnf install -y certbot python3-certbot-nginx
                 ;;
         esac
-        print_success "Certbot installed"
+        
+        # Verify installation
+        if certbot plugins 2>/dev/null | grep -q "nginx"; then
+            print_success "Certbot with nginx plugin installed successfully"
+        else
+            print_error "Failed to install certbot nginx plugin"
+            exit 1
+        fi
     fi
     
     # Install Docker

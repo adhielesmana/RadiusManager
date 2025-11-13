@@ -9,9 +9,10 @@
 
 This installs:
 - ✓ Nginx (on host)
-- ✓ Certbot (for SSL)
+- ✓ Certbot with nginx plugin (for SSL)
 - ✓ Docker
 - ✓ Configures environment
+- ✓ Auto-verifies certbot nginx plugin installation
 
 ### Step 2: Deploy
 ```bash
