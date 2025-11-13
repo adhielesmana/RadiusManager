@@ -664,6 +664,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update RADIUS configuration
+  app.patch("/api/settings/radius", requireAdmin, async (req, res) => {
+    try {
+      const { radiusHost, radiusSecret, radiusAuthPort, radiusAcctPort } = req.body;
+      
+      // Validate input
+      const validatedData = insertSettingsSchema.partial().parse({
+        radiusHost,
+        radiusSecret,
+        radiusAuthPort,
+        radiusAcctPort,
+      });
+      
+      const settings = await storage.updateSettings(validatedData);
+      res.json(settings);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Reset RADIUS configuration to defaults (local container)
+  app.post("/api/settings/radius/reset", requireAdmin, async (_req, res) => {
+    try {
+      // Set all RADIUS fields to null to use hardcoded defaults
+      const settings = await storage.updateSettings({
+        radiusHost: null,
+        radiusSecret: null,
+        radiusAuthPort: null,
+        radiusAcctPort: null,
+      });
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Connection Status Endpoints
   app.get("/api/status/database", async (_req, res) => {
     try {
