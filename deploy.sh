@@ -268,25 +268,27 @@ check_prerequisites() {
         print_success ".env file exists"
     fi
     
-    # Load SSL configuration from .env
-    if [ -f .env ]; then
-        set -a
-        source .env
-        set +a
-        
-        if [ "$ENABLE_SSL" = "true" ]; then
-            COMPOSE_FILES="-f docker-compose.yml -f docker-compose.ssl.yml"
-            SSL_MODE="ENABLED"
-            print_info "SSL Mode: ENABLED (using domain: ${APP_DOMAIN})"
-        elif [ "$ENABLE_SSL" = "existing_nginx" ]; then
-            COMPOSE_FILES="-f docker-compose.yml"
-            SSL_MODE="EXISTING_NGINX"
-            print_info "SSL Mode: EXISTING NGINX (backend on port 5000, domain: ${APP_DOMAIN})"
-        else
-            COMPOSE_FILES="-f docker-compose.yml"
-            SSL_MODE="DISABLED"
-            print_info "SSL Mode: DISABLED (local development)"
-        fi
+    # Check deployment mode (DEPLOYMENT_MODE already sourced at top-level)
+    if [ "$DEPLOYMENT_MODE" = "host_nginx" ]; then
+        COMPOSE_FILES="-f docker-compose.yml"
+        SSL_MODE="HOST_NGINX"
+        SETUP_HOST_NGINX=true
+        print_info "Deployment Mode: HOST NGINX (nginx on host, backend on port ${APP_HOST_PORT:-5000}, domain: ${APP_DOMAIN})"
+    elif [ "$ENABLE_SSL" = "true" ]; then
+        COMPOSE_FILES="-f docker-compose.yml -f docker-compose.ssl.yml"
+        SSL_MODE="ENABLED"
+        SETUP_HOST_NGINX=false
+        print_info "Deployment Mode: DOCKER NGINX with SSL (using domain: ${APP_DOMAIN})"
+    elif [ "$ENABLE_SSL" = "existing_nginx" ]; then
+        COMPOSE_FILES="-f docker-compose.yml"
+        SSL_MODE="EXISTING_NGINX"
+        SETUP_HOST_NGINX=false
+        print_info "Deployment Mode: EXISTING NGINX (backend on port 5000, domain: ${APP_DOMAIN})"
+    else
+        COMPOSE_FILES="-f docker-compose.yml"
+        SSL_MODE="DISABLED"
+        SETUP_HOST_NGINX=false
+        print_info "Deployment Mode: DOCKER only (local development)"
     fi
     
     # Check curl (needed for health checks)
@@ -928,6 +930,13 @@ main() {
         exit 1
     fi
     
+    # Source .env at top-level to make DEPLOYMENT_MODE available
+    if [ -f .env ]; then
+        set -a
+        source .env
+        set +a
+    fi
+    
     # Run deployment steps
     check_prerequisites
     validate_ports
@@ -949,14 +958,67 @@ main() {
     
     wait_for_services
     
-    # Connect to existing nginx network (if in existing_nginx mode)
-    connect_to_nginx_network
+    # Setup Host Nginx (if in host_nginx mode)
+    if [ "$SETUP_HOST_NGINX" = "true" ]; then
+        print_header "Setting Up Host Nginx"
+        echo ""
+        
+        # Generate nginx site configuration
+        print_info "Generating nginx site configuration..."
+        if [ -f generate-host-nginx-site.sh ]; then
+            chmod +x generate-host-nginx-site.sh
+            if ./generate-host-nginx-site.sh; then
+                print_success "Nginx site configuration created"
+            else
+                print_error "Failed to generate nginx site configuration"
+                exit 1
+            fi
+        else
+            print_error "generate-host-nginx-site.sh not found"
+            exit 1
+        fi
+        
+        echo ""
+        
+        # Obtain SSL certificate via certbot
+        if [ -n "$APP_DOMAIN" ] && [ -n "$LETSENCRYPT_EMAIL" ]; then
+            print_info "Obtaining SSL certificate for $APP_DOMAIN..."
+            
+            # Check if certificate already exists
+            if [ -d "/etc/letsencrypt/live/$APP_DOMAIN" ]; then
+                print_info "SSL certificate already exists for $APP_DOMAIN"
+            else
+                # Obtain certificate
+                if certbot --nginx -d "$APP_DOMAIN" --email "$LETSENCRYPT_EMAIL" --agree-tos --non-interactive 2>&1; then
+                    print_success "SSL certificate obtained successfully"
+                else
+                    print_warning "Failed to obtain SSL certificate automatically"
+                    echo ""
+                    echo "You can obtain it manually by running:"
+                    echo "  certbot --nginx -d $APP_DOMAIN --email $LETSENCRYPT_EMAIL"
+                fi
+            fi
+        else
+            print_warning "APP_DOMAIN or LETSENCRYPT_EMAIL not set, skipping SSL certificate provisioning"
+            echo ""
+            echo "To obtain SSL certificate manually, run:"
+            echo "  certbot --nginx -d your-domain.com --email your@email.com"
+        fi
+        
+        echo ""
+    fi
     
-    # Setup SSL certificates in nginx container (copy certs, fix nginx.conf)
-    setup_nginx_ssl
-    
-    # Generate Nginx config first (needed by ssl-provision.sh)
-    generate_nginx_config
+    # Docker Nginx setup (skip only for host nginx mode)
+    if [ "$SETUP_HOST_NGINX" != "true" ]; then
+        # Connect to existing nginx network (if in existing_nginx mode)
+        connect_to_nginx_network
+        
+        # Setup SSL certificates in nginx container (copy certs, fix nginx.conf)
+        setup_nginx_ssl
+        
+        # Generate Nginx config (needed by ssl-provision.sh and Docker SSL)
+        generate_nginx_config
+    fi
     
     # Provision SSL certificate if in existing_nginx mode
     if [ "$SSL_MODE" = "EXISTING_NGINX" ] && [ "$SKIP_SSL" != "true" ]; then

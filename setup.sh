@@ -125,14 +125,21 @@ show_help() {
     echo "  --email EMAIL            Email for Let's Encrypt notifications"
     echo "  --staging                Use Let's Encrypt staging server (for testing)"
     echo "  --existing-nginx         Use existing Nginx (runs ISP Manager on port 5000)"
-    echo "  --auto                   Fully automated mode (no prompts)"
+    echo "  --skip-deployment-mode   Skip automatic deployment mode selection"
+    echo "  --auto                   Fully automated mode (no prompts, requires preset DEPLOYMENT_MODE)"
     echo "  --help                   Show this help message"
     echo ""
+    echo "Deployment Modes:"
+    echo "  setup.sh automatically detects if you need to select a deployment mode:"
+    echo "    • Host Nginx:   Nginx on host OS for multi-app servers (recommended)"
+    echo "    • Docker Nginx: Nginx in Docker for single-app deployment"
+    echo "  Use --skip-deployment-mode to bypass automatic selection."
+    echo ""
     echo "Examples:"
-    echo "  ./setup.sh                                    # Interactive setup"
-    echo "  ./setup.sh --auto                            # Fully automated (no prompts)"
+    echo "  ./setup.sh                                    # Interactive setup with deployment mode selection"
+    echo "  ./setup.sh --auto                            # Automated (requires DEPLOYMENT_MODE in .env)"
     echo "  ./setup.sh --domain isp.example.com --email admin@example.com"
-    echo "  ./setup.sh --domain isp.example.com --email admin@example.com --existing-nginx"
+    echo "  ./setup.sh --skip-deployment-mode            # Skip deployment mode selection"
     echo "  ./setup.sh --domain test.example.com --email admin@example.com --staging"
     echo ""
 }
@@ -555,6 +562,7 @@ main() {
     AUTO_MODE=false
     USE_EXISTING_NGINX=false
     FORCE_EXISTING_NGINX=false
+    SKIP_DEPLOYMENT_MODE=false
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -576,6 +584,10 @@ main() {
                 ;;
             --auto)
                 AUTO_MODE=true
+                shift
+                ;;
+            --skip-deployment-mode)
+                SKIP_DEPLOYMENT_MODE=true
                 shift
                 ;;
             --help)
@@ -631,6 +643,71 @@ main() {
         print_info "SSL Mode: DISABLED (Local development)"
     fi
     echo ""
+    
+    # Deployment Mode Orchestration
+    # Source .env to check if DEPLOYMENT_MODE is already set
+    if [ -f .env ]; then
+        set -a
+        source .env
+        set +a
+    fi
+    
+    # Check if deployment mode needs to be selected
+    if [ "$SKIP_DEPLOYMENT_MODE" != "true" ]; then
+        if [ -z "$DEPLOYMENT_MODE" ]; then
+            # DEPLOYMENT_MODE not set
+            if [ "$AUTO_MODE" = "true" ]; then
+                print_error "AUTO_MODE requires DEPLOYMENT_MODE to be preset in .env"
+                echo ""
+                echo "Please either:"
+                echo "  1. Run without --auto flag for interactive mode"
+                echo "  2. Set DEPLOYMENT_MODE in .env before running"
+                echo "  3. Use --skip-deployment-mode if you'll set it later"
+                exit 1
+            else
+                # Interactive mode - invoke deployment mode selector
+                print_header "Deployment Mode Selection"
+                echo ""
+                print_info "No deployment mode detected, launching selector..."
+                echo ""
+                
+                if [ -f select-deployment-mode.sh ]; then
+                    chmod +x select-deployment-mode.sh
+                    if bash ./select-deployment-mode.sh; then
+                        # Re-source .env to get updated DEPLOYMENT_MODE
+                        if [ -f .env ]; then
+                            set -a
+                            source .env
+                            set +a
+                        fi
+                        
+                        # Verify DEPLOYMENT_MODE was actually set
+                        if [ -z "$DEPLOYMENT_MODE" ]; then
+                            print_error "Deployment mode selection failed: DEPLOYMENT_MODE not set in .env"
+                            print_info "Please run select-deployment-mode.sh manually or set DEPLOYMENT_MODE in .env"
+                            exit 1
+                        fi
+                        
+                        print_success "Deployment mode configured: $DEPLOYMENT_MODE"
+                        echo ""
+                    else
+                        print_error "Deployment mode selection script failed"
+                        print_info "Please run select-deployment-mode.sh manually or set DEPLOYMENT_MODE in .env"
+                        exit 1
+                    fi
+                else
+                    print_error "select-deployment-mode.sh not found"
+                    exit 1
+                fi
+            fi
+        else
+            print_info "Deployment Mode: $DEPLOYMENT_MODE (from .env)"
+            echo ""
+        fi
+    else
+        print_info "Deployment mode selection skipped (--skip-deployment-mode)"
+        echo ""
+    fi
     
     # Prompt for SSL configuration if interactive and no CLI flags provided
     prompt_for_ssl_configuration
