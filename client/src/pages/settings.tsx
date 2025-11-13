@@ -44,6 +44,12 @@ export default function Settings() {
   const [selectedCompanyGroup, setSelectedCompanyGroup] = useState<CompanyGroup | null>(null);
   const [savingRadius, setSavingRadius] = useState(false);
   const [resettingRadius, setResettingRadius] = useState(false);
+  
+  // Controlled form state for RADIUS configuration
+  const [radiusHost, setRadiusHost] = useState<string>("");
+  const [radiusSecret, setRadiusSecret] = useState<string>("");
+  const [radiusAuthPort, setRadiusAuthPort] = useState<string>("");
+  const [radiusAcctPort, setRadiusAcctPort] = useState<string>("");
 
   const { data: settings, isLoading } = useQuery<Settings>({
     queryKey: ['/api/settings'],
@@ -71,6 +77,11 @@ export default function Settings() {
     if (settings?.logoUrl) {
       setLogoUrl(settings.logoUrl);
     }
+    // Initialize RADIUS form fields from database
+    setRadiusHost(settings?.radiusHost || '');
+    setRadiusSecret(settings?.radiusSecret || '');
+    setRadiusAuthPort(settings?.radiusAuthPort?.toString() || '');
+    setRadiusAcctPort(settings?.radiusAcctPort?.toString() || '');
   }, [settings]);
 
   const updateSettingsMutation = useMutation({
@@ -160,17 +171,68 @@ export default function Settings() {
   const handleSaveRadiusConfig = async () => {
     try {
       setSavingRadius(true);
-      const radiusHost = (document.getElementById('radius-host') as HTMLInputElement)?.value || null;
-      const radiusSecret = (document.getElementById('radius-secret') as HTMLInputElement)?.value || null;
-      const radiusAuthPort = (document.getElementById('radius-auth-port') as HTMLInputElement)?.value;
-      const radiusAcctPort = (document.getElementById('radius-acct-port') as HTMLInputElement)?.value;
-
-      await apiRequest('PATCH', '/api/settings/radius', {
-        radiusHost,
-        radiusSecret,
-        radiusAuthPort: radiusAuthPort ? parseInt(radiusAuthPort) : null,
-        radiusAcctPort: radiusAcctPort ? parseInt(radiusAcctPort) : null,
-      });
+      
+      // Trim and normalize values
+      const trimmedHost = radiusHost.trim();
+      const trimmedSecret = radiusSecret.trim();
+      const trimmedAuthPort = radiusAuthPort.trim();
+      const trimmedAcctPort = radiusAcctPort.trim();
+      
+      // Check if any field has a non-empty value
+      const hasAnyValue = trimmedHost !== '' || trimmedSecret !== '' || trimmedAuthPort !== '' || trimmedAcctPort !== '';
+      
+      if (hasAnyValue) {
+        // If any value is provided, validate that ALL required fields are present
+        if (!trimmedHost || !trimmedSecret || !trimmedAuthPort || !trimmedAcctPort) {
+          toast({
+            title: "Validation Error",
+            description: "All RADIUS fields (host, secret, auth port, accounting port) must be provided together",
+            variant: "destructive",
+          });
+          setSavingRadius(false);
+          return;
+        }
+        
+        // Validate port numbers
+        const authPortNum = parseInt(trimmedAuthPort, 10);
+        const acctPortNum = parseInt(trimmedAcctPort, 10);
+        
+        if (isNaN(authPortNum) || authPortNum <= 0 || authPortNum > 65535) {
+          toast({
+            title: "Validation Error",
+            description: "Auth port must be a number between 1 and 65535",
+            variant: "destructive",
+          });
+          setSavingRadius(false);
+          return;
+        }
+        
+        if (isNaN(acctPortNum) || acctPortNum <= 0 || acctPortNum > 65535) {
+          toast({
+            title: "Validation Error",
+            description: "Accounting port must be a number between 1 and 65535",
+            variant: "destructive",
+          });
+          setSavingRadius(false);
+          return;
+        }
+        
+        // Send trimmed values as strings for host/secret, numbers for ports
+        await apiRequest('PATCH', '/api/settings/radius', {
+          radiusHost: trimmedHost,
+          radiusSecret: trimmedSecret,
+          radiusAuthPort: authPortNum,
+          radiusAcctPort: acctPortNum,
+        });
+      } else {
+        // All fields are empty, send nulls to reset
+        await apiRequest('PATCH', '/api/settings/radius', {
+          radiusHost: null,
+          radiusSecret: null,
+          radiusAuthPort: null,
+          radiusAcctPort: null,
+        });
+      }
 
       await queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/status/radius'] });
@@ -197,11 +259,11 @@ export default function Settings() {
 
       await apiRequest('POST', '/api/settings/radius/reset');
 
-      // Clear input fields
-      (document.getElementById('radius-host') as HTMLInputElement).value = '';
-      (document.getElementById('radius-secret') as HTMLInputElement).value = '';
-      (document.getElementById('radius-auth-port') as HTMLInputElement).value = '';
-      (document.getElementById('radius-acct-port') as HTMLInputElement).value = '';
+      // Clear form state
+      setRadiusHost('');
+      setRadiusSecret('');
+      setRadiusAuthPort('');
+      setRadiusAcctPort('');
 
       await queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/status/radius'] });
@@ -407,7 +469,8 @@ export default function Settings() {
               <Input
                 id="radius-host"
                 placeholder="freeradius (default)"
-                defaultValue={settings?.radiusHost || ''}
+                value={radiusHost}
+                onChange={(e) => setRadiusHost(e.target.value)}
                 data-testid="input-radius-host"
               />
               <p className="text-xs text-muted-foreground">
@@ -421,7 +484,8 @@ export default function Settings() {
                 id="radius-secret"
                 type="password"
                 placeholder="testing123 (default)"
-                defaultValue={settings?.radiusSecret || ''}
+                value={radiusSecret}
+                onChange={(e) => setRadiusSecret(e.target.value)}
                 data-testid="input-radius-secret"
               />
               <p className="text-xs text-muted-foreground">
@@ -435,7 +499,8 @@ export default function Settings() {
                 id="radius-auth-port"
                 type="number"
                 placeholder="1812 (default)"
-                defaultValue={settings?.radiusAuthPort || ''}
+                value={radiusAuthPort}
+                onChange={(e) => setRadiusAuthPort(e.target.value)}
                 data-testid="input-radius-auth-port"
               />
               <p className="text-xs text-muted-foreground">
@@ -449,7 +514,8 @@ export default function Settings() {
                 id="radius-acct-port"
                 type="number"
                 placeholder="1813 (default)"
-                defaultValue={settings?.radiusAcctPort || ''}
+                value={radiusAcctPort}
+                onChange={(e) => setRadiusAcctPort(e.target.value)}
                 data-testid="input-radius-acct-port"
               />
               <p className="text-xs text-muted-foreground">
@@ -608,36 +674,6 @@ export default function Settings() {
           </div>
           <div className="flex justify-end">
             <Button data-testid="button-save-company">Save Changes</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>RADIUS Configuration</CardTitle>
-          <CardDescription>Configure FreeRADIUS integration settings</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="radius-server">RADIUS Server</Label>
-              <Input id="radius-server" placeholder="radius.yourisp.com" data-testid="input-radius-server" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="radius-port">Port</Label>
-              <Input id="radius-port" placeholder="1812" data-testid="input-radius-port" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="radius-secret">Shared Secret</Label>
-              <Input id="radius-secret" type="password" placeholder="••••••••" data-testid="input-radius-secret" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="radius-nas">NAS Identifier</Label>
-              <Input id="radius-nas" placeholder="nas1" data-testid="input-radius-nas" />
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button data-testid="button-save-radius">Save Configuration</Button>
           </div>
         </CardContent>
       </Card>

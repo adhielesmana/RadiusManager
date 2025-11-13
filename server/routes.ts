@@ -667,14 +667,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update RADIUS configuration
   app.patch("/api/settings/radius", requireAdmin, async (req, res) => {
     try {
-      const { radiusHost, radiusSecret, radiusAuthPort, radiusAcctPort } = req.body;
+      let { radiusHost, radiusSecret, radiusAuthPort, radiusAcctPort } = req.body;
       
-      // Validate input
-      const validatedData = insertSettingsSchema.partial().parse({
+      // Normalize undefined to null, then trim string values and treat empty/whitespace as null
+      radiusHost = radiusHost == null ? null : (typeof radiusHost === 'string' ? radiusHost.trim() || null : radiusHost);
+      radiusSecret = radiusSecret == null ? null : (typeof radiusSecret === 'string' ? radiusSecret.trim() || null : radiusSecret);
+      
+      // Trim port values if they're strings, treat empty/whitespace as null before numeric conversion
+      const trimmedAuthPort = radiusAuthPort == null ? null : (typeof radiusAuthPort === 'string' ? radiusAuthPort.trim() || null : radiusAuthPort);
+      const trimmedAcctPort = radiusAcctPort == null ? null : (typeof radiusAcctPort === 'string' ? radiusAcctPort.trim() || null : radiusAcctPort);
+      
+      // Convert port values to numbers, enforcing integer validation
+      let authPortNum = trimmedAuthPort == null ? null : Number(trimmedAuthPort);
+      let acctPortNum = trimmedAcctPort == null ? null : Number(trimmedAcctPort);
+      
+      // Convert NaN or non-integer values to null
+      authPortNum = (Number.isNaN(authPortNum) || !Number.isInteger(authPortNum)) ? null : authPortNum;
+      acctPortNum = (Number.isNaN(acctPortNum) || !Number.isInteger(acctPortNum)) ? null : acctPortNum;
+      
+      // Check if any field has a valid non-null value
+      const hasAnyValue = radiusHost !== null || radiusSecret !== null || authPortNum !== null || acctPortNum !== null;
+      
+      if (hasAnyValue) {
+        // If any value is provided, validate that ALL required fields are present and valid
+        if (!radiusHost || !radiusSecret || authPortNum === null || acctPortNum === null) {
+          return res.status(400).json({ 
+            error: 'All RADIUS fields (host, secret, auth port, accounting port) must be provided together' 
+          });
+        }
+        
+        // Validate port numbers are within valid range
+        if (authPortNum <= 0 || authPortNum > 65535) {
+          return res.status(400).json({ error: 'Auth port must be an integer between 1 and 65535' });
+        }
+        if (acctPortNum <= 0 || acctPortNum > 65535) {
+          return res.status(400).json({ error: 'Accounting port must be an integer between 1 and 65535' });
+        }
+      }
+      
+      // Validate input using schema with strict mode to reject extra keys
+      const validatedData = insertSettingsSchema.partial().strict().parse({
         radiusHost,
         radiusSecret,
-        radiusAuthPort,
-        radiusAcctPort,
+        radiusAuthPort: authPortNum,
+        radiusAcctPort: acctPortNum,
       });
       
       const settings = await storage.updateSettings(validatedData);
