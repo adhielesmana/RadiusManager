@@ -984,17 +984,48 @@ main() {
         echo ""
         
         # Generate nginx site configuration
-        print_info "Generating nginx site configuration..."
-        if [ -f generate-host-nginx-site.sh ]; then
-            chmod +x generate-host-nginx-site.sh
-            if ./generate-host-nginx-site.sh; then
-                print_success "Nginx site configuration created"
-            else
-                print_error "Failed to generate nginx site configuration"
-                exit 1
-            fi
+        print_info "Generating nginx site configuration for $APP_DOMAIN..."
+        
+        NGINX_SITE_FILE="/etc/nginx/sites-available/$APP_DOMAIN"
+        
+        # Create nginx site config
+        cat > "$NGINX_SITE_FILE" << EOF
+server {
+    listen 80;
+    server_name $APP_DOMAIN;
+    
+    # Let certbot handle initial HTTP validation
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    # Redirect all other HTTP to HTTPS (will be enabled after SSL is obtained)
+    location / {
+        proxy_pass http://localhost:${APP_HOST_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+        
+        # Enable the site
+        if [ ! -L "/etc/nginx/sites-enabled/$APP_DOMAIN" ]; then
+            ln -sf "$NGINX_SITE_FILE" "/etc/nginx/sites-enabled/$APP_DOMAIN"
+        fi
+        
+        # Test nginx configuration
+        if nginx -t 2>&1 | grep -q "successful"; then
+            systemctl reload nginx
+            print_success "Nginx site configuration created and enabled"
         else
-            print_error "generate-host-nginx-site.sh not found"
+            print_error "Nginx configuration test failed"
+            nginx -t
             exit 1
         fi
         
