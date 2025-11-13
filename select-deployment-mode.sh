@@ -138,6 +138,29 @@ main() {
             ./adjust-app-port.sh
         fi
         
+        # Check and install certbot if needed
+        echo ""
+        print_info "Checking for certbot installation..."
+        
+        if ! command -v certbot &> /dev/null; then
+            print_warning "Certbot not installed - installing now for SSL certificate management"
+            echo ""
+            
+            if [ -f install-certbot.sh ]; then
+                chmod +x install-certbot.sh
+                ./install-certbot.sh
+            else
+                print_error "install-certbot.sh not found!"
+                print_warning "You will need to install certbot manually before running deploy.sh"
+                echo ""
+                print_info "To install certbot manually:"
+                echo "  Ubuntu/Debian: apt-get install certbot python3-certbot-nginx"
+                echo "  RHEL/CentOS:   yum install certbot python3-certbot-nginx"
+            fi
+        else
+            print_success "Certbot already installed"
+        fi
+        
         echo ""
         print_header "Next Steps"
         echo ""
@@ -274,6 +297,29 @@ main() {
                         chmod +x adjust-app-port.sh
                         echo ""
                         ./adjust-app-port.sh
+                    fi
+                    
+                    # Check and install certbot if needed
+                    echo ""
+                    print_info "Checking for certbot installation..."
+                    
+                    if ! command -v certbot &> /dev/null; then
+                        print_warning "Certbot not installed - installing now for SSL certificate management"
+                        echo ""
+                        
+                        if [ -f install-certbot.sh ]; then
+                            chmod +x install-certbot.sh
+                            ./install-certbot.sh
+                        else
+                            print_error "install-certbot.sh not found!"
+                            print_warning "You will need to install certbot manually before running deploy.sh"
+                            echo ""
+                            print_info "To install certbot manually:"
+                            echo "  Ubuntu/Debian: apt-get install certbot python3-certbot-nginx"
+                            echo "  RHEL/CentOS:   yum install certbot python3-certbot-nginx"
+                        fi
+                    else
+                        print_success "Certbot already installed"
                     fi
                     
                     echo ""

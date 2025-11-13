@@ -12,6 +12,7 @@ ISP Manager now features **intelligent nginx detection** that automatically conf
 - ✅ **Automatically configures for Host Nginx mode**
 - ✅ Skips manual mode selection
 - ✅ Automatically adjusts ports to avoid conflicts
+- ✅ **Automatically installs certbot** if not present
 - ✅ Updates nginx configuration only
 - ℹ️ Perfect for servers with existing nginx installations
 
@@ -49,6 +50,7 @@ Host Server
 - ✅ Each app runs in Docker on unique port
 - ✅ Host nginx proxies to `localhost:PORT`
 - ✅ All SSL certificates in one location
+- ✅ **Automatic certbot installation** for SSL management
 - ✅ Easy to add more apps
 - ✅ Professional, scalable architecture
 
@@ -242,6 +244,9 @@ A: Perfect! The deployment system will **automatically detect** your host nginx 
 
 **Q: Can I add more apps later in Host Nginx mode?**
 A: Yes! That's the main advantage. Just deploy new apps on different ports (5001, 5002...) and create new nginx site configs.
+
+**Q: Is certbot required for Host Nginx mode?**
+A: Yes, certbot is required for SSL certificate management in Host Nginx mode. It will be **automatically installed** when needed during deployment setup. If you need to install it manually: `sudo ./install-certbot.sh`
 
 ---
 

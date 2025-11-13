@@ -274,6 +274,25 @@ check_prerequisites() {
         SSL_MODE="HOST_NGINX"
         SETUP_HOST_NGINX=true
         print_info "Deployment Mode: HOST NGINX (nginx on host, backend on port ${APP_HOST_PORT:-5000}, domain: ${APP_DOMAIN})"
+        
+        # Ensure certbot is installed for host nginx mode
+        if ! command_exists certbot; then
+            echo ""
+            print_error "Certbot is required for Host Nginx mode but not installed"
+            echo ""
+            print_info "Host Nginx mode requires certbot for SSL certificate management"
+            echo ""
+            print_info "To install certbot, run:"
+            echo "  chmod +x install-certbot.sh"
+            echo "  sudo ./install-certbot.sh"
+            echo ""
+            print_info "Or install manually:"
+            echo "  Ubuntu/Debian: sudo apt-get install certbot python3-certbot-nginx"
+            echo "  RHEL/CentOS:   sudo yum install certbot python3-certbot-nginx"
+            echo ""
+            exit 1
+        fi
+        print_success "Certbot is installed and ready"
     elif [ "$ENABLE_SSL" = "true" ]; then
         COMPOSE_FILES="-f docker-compose.yml -f docker-compose.ssl.yml"
         SSL_MODE="ENABLED"
