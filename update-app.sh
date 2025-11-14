@@ -216,7 +216,7 @@ if [ "$APP_STATE" = "running" ]; then
     if [ "$APP_HEALTH" = "healthy" ] || [ "$APP_HEALTH" = "" ]; then
         print_success "✓ Application container is running"
     else
-        print_warning "⚠ Container running but health status: ${APP_HEALTH}"
+        print_info "⚠ Container running but health status: ${APP_HEALTH}"
     fi
 else
     print_error "✗ Container state: ${APP_STATE}"
