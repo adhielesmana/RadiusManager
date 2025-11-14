@@ -68,9 +68,32 @@ docker compose -f docker-compose.yml up -d
 echo ""
 print_header "Database Schema Validation"
 
-# Wait for container to be ready
-print_info "Waiting for container to be ready..."
-sleep 5
+# Wait for app container to be ready (smart check, not blind delay)
+print_info "Waiting for app container to be ready..."
+MAX_WAIT=30
+WAIT_COUNT=0
+while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+    CONTAINER_STATUS=$(docker compose -f docker-compose.yml ps app --format json 2>/dev/null | grep -o '"State":"[^"]*"' | cut -d'"' -f4 || echo "")
+    
+    if [ "$CONTAINER_STATUS" = "running" ]; then
+        print_success "App container is running"
+        break
+    fi
+    
+    echo -n "."
+    sleep 1
+    WAIT_COUNT=$((WAIT_COUNT + 1))
+done
+echo ""
+
+if [ $WAIT_COUNT -eq $MAX_WAIT ]; then
+    print_error "App container failed to start within 30 seconds"
+    docker compose -f docker-compose.yml ps
+    exit 1
+fi
+
+# Give it 2 more seconds for Node.js to initialize
+sleep 2
 
 # Check schema with dry-run to detect differences
 print_info "Checking if database schema matches application..."
