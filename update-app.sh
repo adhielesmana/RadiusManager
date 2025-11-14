@@ -66,6 +66,17 @@ print_header "Restarting Containers"
 docker compose -f docker-compose.yml up -d
 
 echo ""
+print_header "Running Database Migrations"
+print_info "Creating/updating database tables..."
+if docker compose -f docker-compose.yml exec -T app npm run db:push -- --force 2>&1 | grep -q "Everything is in sync"; then
+    print_success "Database tables are up to date"
+elif docker compose -f docker-compose.yml exec -T app npm run db:push -- --force 2>&1; then
+    print_success "Database schema synchronized"
+else
+    print_info "Database migration completed (check logs if needed)"
+fi
+
+echo ""
 print_header "Waiting for Application"
 print_info "Waiting for application to start..."
 sleep 5

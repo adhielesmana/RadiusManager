@@ -438,6 +438,16 @@ wait_for_services() {
         exit 1
     fi
     
+    # Run database migrations to create/update tables
+    print_info "Creating database tables..."
+    if docker compose $COMPOSE_FILES exec -T app npm run db:push -- --force 2>&1 | grep -q "Everything is in sync"; then
+        print_success "Database tables created/updated successfully"
+    elif docker compose $COMPOSE_FILES exec -T app npm run db:push -- --force 2>&1; then
+        print_success "Database schema synchronized"
+    else
+        print_warning "Database migration may have encountered issues (check logs if app fails)"
+    fi
+    
     # Wait for ISP Manager application
     if [ "$SKIP_CURL_CHECK" = false ]; then
         print_info "Waiting for ISP Manager application..."
