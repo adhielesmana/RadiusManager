@@ -1259,22 +1259,81 @@ main() {
         echo ""
         
         # Generate nginx site configuration
-        print_info "Generating nginx site configuration for $APP_DOMAIN..."
-        
         NGINX_SITE_FILE="/etc/nginx/sites-available/$APP_DOMAIN"
         
-        # Create nginx site config
-        cat > "$NGINX_SITE_FILE" << EOF
+        # Check if SSL certificate already exists
+        SSL_EXISTS=false
+        if [ -d "/etc/letsencrypt/live/$APP_DOMAIN" ] && [ -f "/etc/letsencrypt/live/$APP_DOMAIN/fullchain.pem" ]; then
+            SSL_EXISTS=true
+        fi
+        
+        # Generate nginx config with current values
+        print_info "Generating nginx configuration with current settings..."
+        print_info "Target: http://localhost:${APP_HOST_PORT} for $APP_DOMAIN"
+        
+        # Generate config based on SSL existence
+        if [ "$SSL_EXISTS" = "true" ]; then
+            # SSL exists - generate complete HTTP+HTTPS config
+            print_info "SSL detected - generating HTTP redirect + HTTPS config"
+            cat > "$NGINX_SITE_FILE" << 'EOF_HTTP_REDIRECT'
+# HTTP - Redirect to HTTPS
 server {
     listen 80;
-    server_name $APP_DOMAIN;
+    server_name APP_DOMAIN_PLACEHOLDER;
     
-    # Let certbot handle initial HTTP validation
+    # ACME challenge path
     location /.well-known/acme-challenge/ {
         root /var/www/html;
     }
     
-    # Redirect all other HTTP to HTTPS (will be enabled after SSL is obtained)
+    # Redirect to HTTPS
+    location / {
+        return 301 https://$server_name$request_uri;
+    }
+}
+
+# HTTPS - Main application
+server {
+    listen 443 ssl http2;
+    server_name APP_DOMAIN_PLACEHOLDER;
+    
+    # SSL certificates (managed by certbot)
+    ssl_certificate /etc/letsencrypt/live/APP_DOMAIN_PLACEHOLDER/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/APP_DOMAIN_PLACEHOLDER/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    
+    # Proxy to application
+    location / {
+        proxy_pass http://localhost:APP_HOST_PORT_PLACEHOLDER;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF_HTTP_REDIRECT
+            # Replace placeholders
+            sed -i "s/APP_DOMAIN_PLACEHOLDER/$APP_DOMAIN/g" "$NGINX_SITE_FILE"
+            sed -i "s/APP_HOST_PORT_PLACEHOLDER/${APP_HOST_PORT}/g" "$NGINX_SITE_FILE"
+        else
+            # No SSL - generate HTTP-only config for initial setup
+            print_info "No SSL - generating HTTP-only config for initial setup"
+            cat > "$NGINX_SITE_FILE" << EOF
+server {
+    listen 80;
+    server_name $APP_DOMAIN;
+    
+    # ACME challenge path
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+    
+    # Proxy to application
     location / {
         proxy_pass http://localhost:${APP_HOST_PORT};
         proxy_http_version 1.1;
@@ -1288,47 +1347,56 @@ server {
     }
 }
 EOF
+        fi
         
         # Enable the site
         if [ ! -L "/etc/nginx/sites-enabled/$APP_DOMAIN" ]; then
             ln -sf "$NGINX_SITE_FILE" "/etc/nginx/sites-enabled/$APP_DOMAIN"
         fi
         
-        # Test nginx configuration
-        if nginx -t 2>&1 | grep -q "successful"; then
-            systemctl reload nginx
-            print_success "Nginx site configuration created and enabled"
-        else
-            print_error "Nginx configuration test failed"
-            nginx -t
+        # Test and reload nginx configuration
+        print_info "Testing nginx configuration..."
+        if ! nginx -t; then
+            echo ""
+            print_error "Nginx configuration test FAILED - aborting"
             exit 1
         fi
+        print_success "Nginx configuration test passed"
+        
+        print_info "Reloading nginx..."
+        if ! systemctl reload nginx; then
+            print_error "Failed to reload nginx - aborting"
+            exit 1
+        fi
+        print_success "Nginx configuration updated and activated"
         
         echo ""
         
-        # Obtain SSL certificate via certbot
+        # Run certbot to obtain SSL certificate (only if not already present)
         if [ -n "$APP_DOMAIN" ] && [ -n "$LETSENCRYPT_EMAIL" ]; then
-            print_info "Obtaining SSL certificate for $APP_DOMAIN..."
-            
-            # Check if certificate already exists
-            if [ -d "/etc/letsencrypt/live/$APP_DOMAIN" ]; then
-                print_info "SSL certificate already exists for $APP_DOMAIN"
-            else
-                # Obtain certificate
-                if certbot --nginx -d "$APP_DOMAIN" --email "$LETSENCRYPT_EMAIL" --agree-tos --non-interactive 2>&1; then
-                    print_success "SSL certificate obtained successfully"
+            if [ "$SSL_EXISTS" = "false" ]; then
+                print_info "Obtaining SSL certificate for $APP_DOMAIN..."
+                
+                # Run certbot (it will modify our HTTP-only config to add HTTPS)
+                if certbot --nginx -d "$APP_DOMAIN" --email "$LETSENCRYPT_EMAIL" --agree-tos --non-interactive; then
+                    print_success "SSL certificate obtained by certbot"
+                    print_info "You may need to redeploy to use the updated config template"
                 else
-                    print_warning "Failed to obtain SSL certificate automatically"
+                    print_error "Certbot failed to obtain certificate"
                     echo ""
-                    echo "You can obtain it manually by running:"
-                    echo "  certbot --nginx -d $APP_DOMAIN --email $LETSENCRYPT_EMAIL"
+                    echo "To retry manually, run:"
+                    echo "  sudo certbot --nginx -d $APP_DOMAIN --email $LETSENCRYPT_EMAIL"
+                    exit 1
                 fi
+            else
+                print_success "SSL certificate already exists for $APP_DOMAIN"
+                print_info "Using existing certificate (auto-renewal via cron)"
             fi
         else
-            print_warning "APP_DOMAIN or LETSENCRYPT_EMAIL not set, skipping SSL certificate provisioning"
+            print_warning "APP_DOMAIN or LETSENCRYPT_EMAIL not set, skipping SSL"
             echo ""
             echo "To obtain SSL certificate manually, run:"
-            echo "  certbot --nginx -d your-domain.com --email your@email.com"
+            echo "  sudo certbot --nginx -d your-domain.com --email your@email.com"
         fi
         
         echo ""
@@ -1346,8 +1414,8 @@ EOF
         generate_nginx_config
     fi
     
-    # Provision SSL certificate if in existing_nginx mode
-    if [ "$SSL_MODE" = "EXISTING_NGINX" ] && [ "$SKIP_SSL" != "true" ]; then
+    # Provision SSL certificate if in existing_nginx mode OR host_nginx mode
+    if [ \( "$SSL_MODE" = "EXISTING_NGINX" -o "$SSL_MODE" = "HOST_NGINX" \) ] && [ "$SKIP_SSL" != "true" ]; then
         print_header "Automated SSL Provisioning"
         
         # Check if this is a multi-app setup
@@ -1442,7 +1510,7 @@ EOF
         echo ""
         print_info "SSL certificate status:"
         docker compose $COMPOSE_FILES exec -T reverse-proxy certbot certificates 2>/dev/null || print_warning "Certificate info not available yet"
-    elif [ "$SSL_MODE" = "EXISTING_NGINX" ]; then
+    elif [ "$SSL_MODE" = "EXISTING_NGINX" ] || [ "$SSL_MODE" = "HOST_NGINX" ]; then
         print_success "ISP Manager backend is running on http://localhost:${APP_HOST_PORT:-5000}"
         echo ""
         
