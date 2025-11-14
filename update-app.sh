@@ -254,9 +254,9 @@ CREATE TABLE IF NOT EXISTS session (
 CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire);
 EOSQL
     
-    # Run migration to create all other tables (auto-answer prompts)
+    # Run migration to create all other tables (auto-answer prompts with --force)
     print_info "Running database migration (this may take a minute)..."
-    MIGRATION_OUTPUT=$(printf '1\n%.0s' {1..50} | docker compose exec -T app npm run db:push 2>&1)
+    MIGRATION_OUTPUT=$(printf '1\n%.0s' {1..50} | docker compose exec -T app npm run db:push -- --force 2>&1)
     MIGRATION_EXIT=$?
     
     # Check if migration succeeded (accepts both "Changes applied" and "Everything is in sync")
