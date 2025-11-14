@@ -225,11 +225,31 @@ fi
 # Check database tables exist
 print_info "Verifying database tables..."
 TABLE_COUNT=$(docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
-if [ "$TABLE_COUNT" -gt "10" ]; then
+if [ "$TABLE_COUNT" -ge "10" ]; then
     print_success "✓ Database tables exist ($TABLE_COUNT tables)"
 else
     print_error "✗ Database tables missing (found only $TABLE_COUNT)"
-    print_info "  Run: docker compose exec -T app npm run db:push -- --force"
+    echo ""
+    print_info "Creating database tables automatically..."
+    
+    # Run migration to create tables
+    if docker compose exec -T app npm run db:push -- --force; then
+        # Verify creation
+        NEW_COUNT=$(docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
+        
+        if [ "$NEW_COUNT" -ge "10" ]; then
+            print_success "✓ Database tables created successfully"
+            print_info "  Created $NEW_COUNT tables"
+        else
+            print_error "✗ Migration completed but table count still low ($NEW_COUNT)"
+            print_error "Database setup incomplete - manual intervention required"
+            exit 1
+        fi
+    else
+        print_error "✗ Failed to create database tables"
+        print_info "  Try manually: docker compose exec -T app npm run db:push -- --force"
+        exit 1
+    fi
 fi
 
 echo ""
