@@ -66,58 +66,61 @@ print_header "Restarting Containers"
 docker compose -f docker-compose.yml up -d
 
 echo ""
-print_header "Database Migration"
+print_header "Database Schema Validation"
 
 # Wait for container to be ready
 print_info "Waiting for container to be ready..."
 sleep 5
 
-# Check if database is accessible and tables exist
-print_info "Checking database status..."
-TABLES_EXIST=$(docker compose -f docker-compose.yml exec -T app node -e "
-const { Pool } = require('pg');
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-pool.query(\"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='customers'\")
-  .then(r => { console.log(r.rows[0].count); process.exit(0); })
-  .catch(() => { console.log('0'); process.exit(0); });
-" 2>/dev/null || echo "0")
+# Check schema with dry-run to detect differences
+print_info "Checking if database schema matches application..."
 
-if [ "$TABLES_EXIST" != "0" ]; then
-    print_success "Database tables already exist - skipping migration"
-    print_info "Tables will auto-sync on application start if needed"
-else
-    print_info "Running database migration (this may take 30-60 seconds)..."
-    echo -n "Progress: "
-    
-    # Run migration in background and show progress
-    (timeout 60 docker compose -f docker-compose.yml exec -T app npm run db:push -- --force > /tmp/db-migration.log 2>&1) &
-    MIGRATION_PID=$!
-    
-    # Show progress while waiting
-    while kill -0 $MIGRATION_PID 2>/dev/null; do
-        echo -n "."
-        sleep 2
-    done
-    echo ""
-    
-    wait $MIGRATION_PID
-    MIGRATION_EXIT=$?
-    
-    if [ $MIGRATION_EXIT -eq 0 ]; then
-        if grep -q "Everything is in sync" /tmp/db-migration.log 2>/dev/null; then
-            print_success "Database tables are up to date"
-        else
-            print_success "Database schema synchronized"
-        fi
-    elif [ $MIGRATION_EXIT -eq 124 ]; then
-        print_info "Migration timed out - tables will be created on app start"
+if timeout 30 docker compose -f docker-compose.yml exec -T app npm run db:push -- --dry-run > /tmp/db-check.log 2>&1; then
+    # Check if schema is in sync
+    if grep -q "Everything is in sync" /tmp/db-check.log; then
+        print_success "Database schema is up to date"
+        print_info "No migration needed"
+        rm -f /tmp/db-check.log
     else
-        print_info "Migration completed (check logs if needed: docker compose logs app)"
+        # Schema differences detected
+        print_info "Schema differences detected - running migration..."
+        echo -n "Progress: "
+        
+        # Run actual migration with progress indicator
+        (timeout 60 docker compose -f docker-compose.yml exec -T app npm run db:push -- --force > /tmp/db-migration.log 2>&1) &
+        MIGRATION_PID=$!
+        
+        # Show progress dots
+        while kill -0 $MIGRATION_PID 2>/dev/null; do
+            echo -n "."
+            sleep 2
+        done
+        echo ""
+        
+        wait $MIGRATION_PID
+        MIGRATION_EXIT=$?
+        
+        if [ $MIGRATION_EXIT -eq 0 ]; then
+            print_success "Database schema synchronized successfully"
+        else
+            print_error "Migration failed - check logs: docker compose logs app"
+            cat /tmp/db-migration.log
+            rm -f /tmp/db-migration.log /tmp/db-check.log
+            exit 1
+        fi
+        
+        rm -f /tmp/db-migration.log
     fi
-    
-    # Clean up log file
-    rm -f /tmp/db-migration.log
+else
+    # Dry-run failed - connection issue or schema problem
+    print_error "Failed to check database schema"
+    print_info "This could be a connection issue or schema problem"
+    cat /tmp/db-check.log
+    rm -f /tmp/db-check.log
+    exit 1
 fi
+
+rm -f /tmp/db-check.log
 
 echo ""
 print_header "Waiting for Application"
