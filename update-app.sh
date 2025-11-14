@@ -201,11 +201,51 @@ fi
 echo ""
 print_success "Update Complete!"
 echo ""
-print_info "Application Status:"
-docker compose ps
+
+# Auto-detect port and show deployment info
+print_header "Deployment Verification"
+APP_PORT=${APP_HOST_PORT:-5000}
+print_info "Application running on port: ${APP_PORT}"
+echo ""
+
+# Check container health
+APP_HEALTH=$(docker compose ps app --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+APP_STATE=$(docker compose ps app --format json 2>/dev/null | grep -o '"State":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+
+if [ "$APP_STATE" = "running" ]; then
+    if [ "$APP_HEALTH" = "healthy" ] || [ "$APP_HEALTH" = "" ]; then
+        print_success "✓ Application container is running"
+    else
+        print_warning "⚠ Container running but health status: ${APP_HEALTH}"
+    fi
+else
+    print_error "✗ Container state: ${APP_STATE}"
+fi
+
+# Check database tables exist
+print_info "Verifying database tables..."
+TABLE_COUNT=$(docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
+if [ "$TABLE_COUNT" -gt "10" ]; then
+    print_success "✓ Database tables exist ($TABLE_COUNT tables)"
+else
+    print_error "✗ Database tables missing (found only $TABLE_COUNT)"
+    print_info "  Run: docker compose exec -T app npm run db:push -- --force"
+fi
 
 echo ""
-print_info "Your application has been updated successfully"
-print_info "Nginx configuration was not modified"
-print_info "Access your app at: https://$APP_DOMAIN"
+print_info "Container Status:"
+docker compose ps
+echo ""
+
+print_success "🎉 Deployment verification complete!"
+echo ""
+print_info "Access URLs:"
+print_info "  • Local: http://localhost:${APP_HOST_PORT}"
+if [ -n "$APP_DOMAIN" ]; then
+    print_info "  • Public: https://${APP_DOMAIN}"
+fi
+echo ""
+print_info "Default Login:"
+print_info "  • Username: adhielesmana"
+print_info "  • Password: admin123"
 echo ""
