@@ -66,29 +66,58 @@ print_header "Restarting Containers"
 docker compose -f docker-compose.yml up -d
 
 echo ""
-print_header "Running Database Migrations"
-print_info "Creating/updating database tables..."
+print_header "Database Migration"
 
 # Wait for container to be ready
-sleep 3
+print_info "Waiting for container to be ready..."
+sleep 5
 
-# Run migration with timeout (60 seconds max)
-if timeout 60 docker compose -f docker-compose.yml exec -T app npm run db:push -- --force > /tmp/db-migration.log 2>&1; then
-    if grep -q "Everything is in sync" /tmp/db-migration.log; then
-        print_success "Database tables are up to date"
-    else
-        print_success "Database schema synchronized"
-    fi
+# Check if database is accessible and tables exist
+print_info "Checking database status..."
+TABLES_EXIST=$(docker compose -f docker-compose.yml exec -T app node -e "
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.query(\"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='customers'\")
+  .then(r => { console.log(r.rows[0].count); process.exit(0); })
+  .catch(() => { console.log('0'); process.exit(0); });
+" 2>/dev/null || echo "0")
+
+if [ "$TABLES_EXIST" != "0" ]; then
+    print_success "Database tables already exist - skipping migration"
+    print_info "Tables will auto-sync on application start if needed"
 else
-    if [ $? -eq 124 ]; then
+    print_info "Running database migration (this may take 30-60 seconds)..."
+    echo -n "Progress: "
+    
+    # Run migration in background and show progress
+    (timeout 60 docker compose -f docker-compose.yml exec -T app npm run db:push -- --force > /tmp/db-migration.log 2>&1) &
+    MIGRATION_PID=$!
+    
+    # Show progress while waiting
+    while kill -0 $MIGRATION_PID 2>/dev/null; do
+        echo -n "."
+        sleep 2
+    done
+    echo ""
+    
+    wait $MIGRATION_PID
+    MIGRATION_EXIT=$?
+    
+    if [ $MIGRATION_EXIT -eq 0 ]; then
+        if grep -q "Everything is in sync" /tmp/db-migration.log 2>/dev/null; then
+            print_success "Database tables are up to date"
+        else
+            print_success "Database schema synchronized"
+        fi
+    elif [ $MIGRATION_EXIT -eq 124 ]; then
         print_info "Migration timed out - tables will be created on app start"
     else
-        print_info "Database migration completed (check logs if needed)"
+        print_info "Migration completed (check logs if needed: docker compose logs app)"
     fi
+    
+    # Clean up log file
+    rm -f /tmp/db-migration.log
 fi
-
-# Clean up log file
-rm -f /tmp/db-migration.log
 
 echo ""
 print_header "Waiting for Application"
