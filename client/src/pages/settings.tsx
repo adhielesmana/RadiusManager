@@ -144,20 +144,66 @@ export default function Settings() {
 
     // Convert to base64
     const reader = new FileReader();
+    
     reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      setLogoUrl(dataUrl);
-      // Auto-save after upload
-      updateSettingsMutation.mutate({ logoUrl: dataUrl });
+      try {
+        const dataUrl = event.target?.result;
+        
+        if (!dataUrl || typeof dataUrl !== 'string') {
+          throw new Error('Invalid file data');
+        }
+        
+        // Validate the data URL format
+        if (!dataUrl.startsWith('data:image/')) {
+          throw new Error('Invalid image format');
+        }
+        
+        setLogoUrl(dataUrl);
+        // Auto-save after upload
+        updateSettingsMutation.mutate({ logoUrl: dataUrl });
+      } catch (error: any) {
+        console.error('Logo upload error:', error);
+        toast({
+          title: "Upload failed",
+          description: error.message || "Failed to process the image file",
+          variant: "destructive",
+        });
+      }
     };
-    reader.onerror = () => {
+    
+    reader.onerror = (event) => {
+      const errorMsg = reader.error?.message || 'Unknown error';
+      console.error('FileReader error:', reader.error, event);
       toast({
         title: "Upload failed",
-        description: "Failed to read the image file",
+        description: `Failed to read the image file: ${errorMsg}`,
+        variant: "destructive",
+      });
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    };
+    
+    reader.onabort = () => {
+      console.warn('File reading was aborted');
+      toast({
+        title: "Upload cancelled",
+        description: "File reading was cancelled",
         variant: "destructive",
       });
     };
-    reader.readAsDataURL(file);
+    
+    try {
+      reader.readAsDataURL(file);
+    } catch (error: any) {
+      console.error('Failed to start reading file:', error);
+      toast({
+        title: "Upload failed",
+        description: "Could not start reading the file. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleRemoveLogo = () => {
