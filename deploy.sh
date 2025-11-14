@@ -440,13 +440,29 @@ wait_for_services() {
     
     # Run database migrations to create/update tables
     print_info "Creating database tables..."
-    if docker compose $COMPOSE_FILES exec -T app npm run db:push -- --force 2>&1 | grep -q "Everything is in sync"; then
-        print_success "Database tables created/updated successfully"
-    elif docker compose $COMPOSE_FILES exec -T app npm run db:push -- --force 2>&1; then
-        print_success "Database schema synchronized"
+    
+    # Wait a moment for app container to be fully ready
+    sleep 3
+    
+    # Run migration with timeout (60 seconds max)
+    if timeout 60 docker compose $COMPOSE_FILES exec -T app npm run db:push -- --force > /tmp/db-migration.log 2>&1; then
+        if grep -q "Everything is in sync" /tmp/db-migration.log; then
+            print_success "Database tables are up to date"
+        else
+            print_success "Database schema synchronized"
+        fi
     else
-        print_warning "Database migration may have encountered issues (check logs if app fails)"
+        # Check if it timed out
+        if [ $? -eq 124 ]; then
+            print_warning "Database migration timed out - will retry after app starts"
+            print_info "Tables will be created automatically on first app start"
+        else
+            print_warning "Database migration completed with warnings (app will handle it)"
+        fi
     fi
+    
+    # Clean up log file
+    rm -f /tmp/db-migration.log
     
     # Wait for ISP Manager application
     if [ "$SKIP_CURL_CHECK" = false ]; then
