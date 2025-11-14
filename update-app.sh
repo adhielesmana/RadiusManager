@@ -118,10 +118,10 @@ if [ "$SKIP_SCHEMA_CHECK" = "false" ]; then
     # Give it 2 more seconds for Node.js to initialize
     sleep 2
     
-    # Check schema with dry-run to detect differences
+    # Check schema with dry-run to detect differences (auto-answer prompts)
     print_info "Checking if database schema matches application (max 30s)..."
     
-    if timeout 30 docker compose -f docker-compose.yml exec -T app npm run db:push -- --dry-run > /tmp/db-check.log 2>&1; then
+    if timeout 30 bash -c "printf '1\n%.0s' {1..50} | docker compose -f docker-compose.yml exec -T app npm run db:push -- --dry-run" > /tmp/db-check.log 2>&1; then
         # Check if schema is in sync
         if grep -q "Everything is in sync" /tmp/db-check.log; then
             print_success "Database schema is up to date"
@@ -132,8 +132,8 @@ if [ "$SKIP_SCHEMA_CHECK" = "false" ]; then
             print_info "Schema differences detected - running migration..."
             echo -n "Progress: "
             
-            # Run actual migration with progress indicator
-            (timeout 60 docker compose -f docker-compose.yml exec -T app npm run db:push -- --force > /tmp/db-migration.log 2>&1) &
+            # Run actual migration with progress indicator (auto-answer prompts)
+            (timeout 60 bash -c "printf '1\n%.0s' {1..50} | docker compose -f docker-compose.yml exec -T app npm run db:push" > /tmp/db-migration.log 2>&1) &
             MIGRATION_PID=$!
             
             # Show progress dots
