@@ -1,0 +1,52 @@
+docker compose logs app --tail=50
+
+isp-manager-app  | 1:58:23 PM [express] GET /api/dashboard/stats 500 in 20ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:58:53 PM [express] GET /api/dashboard/stats 500 in 15ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | /app/node_modules/pg-pool/index.js:45
+isp-manager-app  |     Error.captureStackTrace(err)
+isp-manager-app  |           ^
+isp-manager-app  | 
+isp-manager-app  | error: relation "settings" does not exist
+isp-manager-app  |     at /app/node_modules/pg-pool/index.js:45:11
+isp-manager-app  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+isp-manager-app  |     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+isp-manager-app  |     at async DatabaseStorage.getSettings (file:///app/dist/index.js:1128:20)
+isp-manager-app  |     at async getRadiusConfig (file:///app/dist/index.js:3014:21)
+isp-manager-app  |     at async file:///app/dist/index.js:3637:28 {
+isp-manager-app  |   length: 108,
+isp-manager-app  |   severity: 'ERROR',
+isp-manager-app  |   code: '42P01',
+isp-manager-app  |   detail: undefined,
+isp-manager-app  |   hint: undefined,
+isp-manager-app  |   position: '133',
+isp-manager-app  |   internalPosition: undefined,
+isp-manager-app  |   internalQuery: undefined,
+isp-manager-app  |   where: undefined,
+isp-manager-app  |   schema: undefined,
+isp-manager-app  |   table: undefined,
+isp-manager-app  |   column: undefined,
+isp-manager-app  |   dataType: undefined,
+isp-manager-app  |   constraint: undefined,
+isp-manager-app  |   file: 'parse_relation.c',
+isp-manager-app  |   line: '1392',
+isp-manager-app  |   routine: 'parserOpenTable'
+isp-manager-app  | }
+isp-manager-app  | 
+isp-manager-app  | Node.js v20.19.5
+isp-manager-app  | 
+isp-manager-app  | > rest-express@1.0.0 start
+isp-manager-app  | > NODE_ENV=production node dist/index.js
+isp-manager-app  | 
+isp-manager-app  | 1:59:03 PM [express] Initializing ONU discovery system...
+isp-manager-app  | [DiscoveryManager] Initializing discovery for all active OLTs...
+isp-manager-app  | [DiscoveryManager] Error during initialization: relation "olts" does not exist
+isp-manager-app  | 1:59:03 PM [express] serving on port 5000
+isp-manager-app  | 1:59:07 PM [express] GET /api/dashboard/stats 500 in 29ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:59:12 PM [express] GET /api/dashboard/stats 500 in 19ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:59:18 PM [express] GET /api/dashboard/stats 500 in 26ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:59:23 PM [express] GET /api/dashboard/stats 500 in 17ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:59:28 PM [express] GET /api/dashboard/stats 500 in 22ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:59:33 PM [express] GET /api/dashboard/stats 500 in 20ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:59:38 PM [express] GET /api/dashboard/stats 500 in 17ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 1:59:43 PM [express] GET /api/dashboard/stats 500 in 25ms :: {"error":"relation \"customers\" does n…
+isp-manager-app  | 2:00:14 PM [express] GET /api/dashboard/stats 500 in 16ms :: {"error":"relation \"customers\" does n…
