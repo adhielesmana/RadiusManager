@@ -69,11 +69,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.session.userId = -1; // Special ID for superadmin
           req.session.username = SUPERADMIN.username;
           req.session.role = SUPERADMIN.role;
-          return res.json({
-            id: -1,
-            username: SUPERADMIN.username,
-            role: SUPERADMIN.role,
-            fullName: SUPERADMIN.fullName,
+          
+          // Explicitly save session before responding
+          return req.session.save((err) => {
+            if (err) {
+              return res.status(500).json({ error: 'Failed to save session' });
+            }
+            res.json({
+              id: -1,
+              username: SUPERADMIN.username,
+              role: SUPERADMIN.role,
+              fullName: SUPERADMIN.fullName,
+            });
           });
         }
       }
@@ -94,9 +101,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.username = user.username;
       req.session.role = user.role;
       
-      // Return user (without password)
-      const { password: _, ...userWithoutPassword } = user;
-      res.json(userWithoutPassword);
+      // Explicitly save session before responding
+      req.session.save((err) => {
+        if (err) {
+          return res.status(500).json({ error: 'Failed to save session' });
+        }
+        
+        // Return user (without password)
+        const { password: _, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

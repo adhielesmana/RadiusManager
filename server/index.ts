@@ -29,6 +29,9 @@ const pgPool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// Trust proxy for correct client IP and secure cookies behind nginx
+app.set('trust proxy', 1);
+
 // Session middleware with PostgreSQL store
 app.use(session({
   store: new PgSession({
@@ -43,6 +46,7 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days for persistent login
+    sameSite: 'lax', // Prevent CSRF while allowing normal navigation
   }
 }));
 
