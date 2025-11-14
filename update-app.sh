@@ -35,6 +35,16 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Uncomment DATABASE_URL and PostgreSQL variables (critical for Drizzle migrations)
+if [ -f .env ]; then
+    sed -i 's/^# DATABASE_URL=/DATABASE_URL=/' .env
+    sed -i 's/^# PGHOST=/PGHOST=/' .env
+    sed -i 's/^# PGPORT=/PGPORT=/' .env
+    sed -i 's/^# PGUSER=/PGUSER=/' .env
+    sed -i 's/^# PGPASSWORD=/PGPASSWORD=/' .env
+    sed -i 's/^# PGDATABASE=/PGDATABASE=/' .env
+fi
+
 set -a
 source .env
 set +a
@@ -232,8 +242,25 @@ else
     echo ""
     print_info "Creating database tables automatically..."
     
-    # Run migration to create tables
-    if docker compose exec -T app npm run db:push -- --force; then
+    # First create session table (required for express-session, sometimes causes issues)
+    print_info "Creating session table..."
+    docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE << 'EOSQL' 2>/dev/null || true
+CREATE TABLE IF NOT EXISTS session (
+  sid varchar NOT NULL COLLATE "default",
+  sess json NOT NULL,
+  expire timestamp(6) NOT NULL,
+  PRIMARY KEY (sid)
+);
+CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire);
+EOSQL
+    
+    # Run migration to create all other tables (auto-answer prompts)
+    print_info "Running database migration (this may take a minute)..."
+    MIGRATION_OUTPUT=$(printf '1\n%.0s' {1..50} | docker compose exec -T app npm run db:push 2>&1)
+    MIGRATION_EXIT=$?
+    
+    # Check if migration succeeded (accepts both "Changes applied" and "Everything is in sync")
+    if echo "$MIGRATION_OUTPUT" | grep -qE "(Changes applied|Everything is in sync)"; then
         # Verify creation
         NEW_COUNT=$(docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
         
@@ -243,11 +270,15 @@ else
         else
             print_error "✗ Migration completed but table count still low ($NEW_COUNT)"
             print_error "Database setup incomplete - manual intervention required"
+            echo "$MIGRATION_OUTPUT" > /tmp/migration-error.log
+            print_info "  Migration output saved to /tmp/migration-error.log"
             exit 1
         fi
     else
         print_error "✗ Failed to create database tables"
-        print_info "  Try manually: docker compose exec -T app npm run db:push -- --force"
+        echo "$MIGRATION_OUTPUT" > /tmp/migration-error.log
+        print_info "  Migration output saved to /tmp/migration-error.log"
+        print_info "  Try manually: docker compose exec -T app npm run db:push"
         exit 1
     fi
 fi

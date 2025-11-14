@@ -444,12 +444,31 @@ wait_for_services() {
     # Wait a moment for app container to be fully ready
     sleep 3
     
-    # Run migration with timeout (60 seconds max)
-    if timeout 60 docker compose $COMPOSE_FILES exec -T app npm run db:push -- --force > /tmp/db-migration.log 2>&1; then
-        if grep -q "Everything is in sync" /tmp/db-migration.log; then
-            print_success "Database tables are up to date"
+    # First create session table (required for express-session)
+    print_info "Creating session table..."
+    docker compose $COMPOSE_FILES exec -T postgres psql -U ispuser -d ispmanager << 'EOSQL' 2>/dev/null || true
+CREATE TABLE IF NOT EXISTS session (
+  sid varchar NOT NULL COLLATE "default",
+  sess json NOT NULL,
+  expire timestamp(6) NOT NULL,
+  PRIMARY KEY (sid)
+);
+CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire);
+EOSQL
+    
+    # Run migration with auto-answer to prompts (timeout 60 seconds max)
+    print_info "Running database migration (auto-answering prompts)..."
+    if timeout 60 bash -c "printf '1\n%.0s' {1..50} | docker compose $COMPOSE_FILES exec -T app npm run db:push" > /tmp/db-migration.log 2>&1; then
+        # Check if migration succeeded (accepts both "Changes applied" and "Everything is in sync")
+        if grep -qE "(Changes applied|Everything is in sync)" /tmp/db-migration.log; then
+            if grep -q "Everything is in sync" /tmp/db-migration.log; then
+                print_success "Database tables are up to date"
+            else
+                print_success "Database schema synchronized"
+            fi
         else
-            print_success "Database schema synchronized"
+            print_warning "Database migration completed with warnings"
+            print_info "Output: $(tail -5 /tmp/db-migration.log)"
         fi
     else
         # Check if it timed out
@@ -458,6 +477,7 @@ wait_for_services() {
             print_info "Tables will be created automatically on first app start"
         else
             print_warning "Database migration completed with warnings (app will handle it)"
+            print_info "Output: $(tail -5 /tmp/db-migration.log)"
         fi
     fi
     
@@ -1072,6 +1092,15 @@ configure_env() {
             exit 1
         fi
     fi
+    
+    # Uncomment DATABASE_URL and PostgreSQL variables (critical for Drizzle migrations)
+    print_info "Enabling database connection variables..."
+    sed -i 's/^# DATABASE_URL=/DATABASE_URL=/' .env
+    sed -i 's/^# PGHOST=/PGHOST=/' .env
+    sed -i 's/^# PGPORT=/PGPORT=/' .env
+    sed -i 's/^# PGUSER=/PGUSER=/' .env
+    sed -i 's/^# PGPASSWORD=/PGPASSWORD=/' .env
+    sed -i 's/^# PGDATABASE=/PGDATABASE=/' .env
     
     # Add/update deployment mode variables
     if grep -q "^DEPLOYMENT_MODE=" .env; then
