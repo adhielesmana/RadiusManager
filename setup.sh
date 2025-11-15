@@ -35,7 +35,7 @@ find_available_port() {
     local max_port=5100
     local port=$base_port
     
-    print_info "Scanning for available ports ($base_port-$max_port)..."
+    print_info "Scanning for available ports ($base_port-$max_port)..." >&2
     
     # Create port conflict matrix
     local used_ports=()
@@ -45,11 +45,11 @@ find_available_port() {
             ((port++))
         else
             # Found available port
-            print_success "Found available port: $port"
+            print_success "Found available port: $port" >&2
             
             # Log conflict matrix if any ports were in use
             if [ ${#used_ports[@]} -gt 0 ]; then
-                print_info "Ports already in use: ${used_ports[*]}"
+                print_info "Ports already in use: ${used_ports[*]}" >&2
             fi
             
             echo "$port"
@@ -57,8 +57,8 @@ find_available_port() {
         fi
     done
     
-    print_error "No available ports in range $base_port-$max_port"
-    print_error "Used ports: ${used_ports[*]}"
+    print_error "No available ports in range $base_port-$max_port" >&2
+    print_error "Used ports: ${used_ports[*]}" >&2
     exit 1
 }
 
