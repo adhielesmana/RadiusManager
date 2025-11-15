@@ -53,10 +53,18 @@ Key features and design decisions include:
   - **Best for**: Dedicated ISP Manager servers, testing/dev environments
   
   ### **Deployment Features** (Both Modes):
+  - **Enhanced setup.sh Script**: Production-grade automated setup with:
+    - **Nginx + SSL Management**: Intelligent nginx site configuration with hardened HTTPS
+    - **Security Headers**: HSTS, X-Frame-Options, X-Content-Type-Options, XSS-Protection, Referrer-Policy
+    - **TLS Best Practices**: TLS 1.2/1.3 only, modern cipher suites, OCSP stapling
+    - **Smart Port Detection**: Scans 5000-5100 range with conflict matrix logging
+    - **Idempotent Configuration**: Automatically creates/updates .env keys
+    - **SSL Fail-Fast Logic**: HTTP-only → SSL attempt → hardened HTTPS on success, clear error handling on failure
+    - **ENABLE_SSL Flag Management**: Only true when domain+email provided AND SSL succeeds
   - **Automatic Nginx Detection**: `detect-nginx.sh` identifies existing nginx installations
   - **Automatic Port Adjustment**: `adjust-app-port.sh` resolves port conflicts (5000-5100 range)
-  - **Zero-Configuration Setup**: Run `select-deployment-mode.sh` for intelligent mode selection
-  - **Automatic SSL Provisioning**: Let's Encrypt certificates via certbot (host) or container
+  - **Zero-Configuration Setup**: Run `./setup.sh --domain your.domain.com --email your@email.com` for complete automated setup
+  - **Automatic SSL Provisioning**: Let's Encrypt certificates via certbot with dry-run verification
   - **Update Detection**: Distinguishes fresh installs from updates to preserve configurations
   - **Health Checks**: Automatic container restart on failure
   - **Production-Ready**: Runs in production mode (Node.js 20, npm start)
