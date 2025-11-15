@@ -232,54 +232,33 @@ else
     print_error "✗ Container state: ${APP_STATE}"
 fi
 
-# Check database tables exist
+# Check database tables exist and create if missing using raw SQL
 print_info "Verifying database tables..."
 TABLE_COUNT=$(docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
-if [ "$TABLE_COUNT" -ge "10" ]; then
+
+if [ "$TABLE_COUNT" -ge "25" ]; then
     print_success "✓ Database tables exist ($TABLE_COUNT tables)"
 else
-    print_error "✗ Database tables missing (found only $TABLE_COUNT)"
+    print_error "✗ Database tables incomplete (found only $TABLE_COUNT, need 25+)"
     echo ""
-    print_info "Creating database tables automatically..."
+    print_info "Applying database schema using raw SQL..."
     
-    # First create session table (required for express-session, sometimes causes issues)
-    print_info "Creating session table..."
-    docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE << 'EOSQL' 2>/dev/null || true
-CREATE TABLE IF NOT EXISTS session (
-  sid varchar NOT NULL COLLATE "default",
-  sess json NOT NULL,
-  expire timestamp(6) NOT NULL,
-  PRIMARY KEY (sid)
-);
-CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire);
-EOSQL
-    
-    # Run migration to create all other tables (auto-answer prompts with --force)
-    print_info "Running database migration (this may take a minute)..."
-    MIGRATION_OUTPUT=$(printf '1\n%.0s' {1..50} | docker compose exec -T app npm run db:push -- --force 2>&1)
-    MIGRATION_EXIT=$?
-    
-    # Check if migration succeeded (accepts both "Changes applied" and "Everything is in sync")
-    if echo "$MIGRATION_OUTPUT" | grep -qE "(Changes applied|Everything is in sync)"; then
-        # Verify creation
+    # Apply comprehensive schema SQL (creates all tables, safe to run multiple times)
+    if docker compose exec -T app cat /app/create-missing-tables.sql | docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE > /tmp/db-migration.log 2>&1; then
+        # Verify tables were created
         NEW_COUNT=$(docker compose exec -T postgres psql -U $PGUSER -d $PGDATABASE -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
         
-        if [ "$NEW_COUNT" -ge "10" ]; then
-            print_success "✓ Database tables created successfully"
-            print_info "  Created $NEW_COUNT tables"
+        if [ "$NEW_COUNT" -ge "25" ]; then
+            print_success "✓ Database schema applied successfully ($NEW_COUNT tables)"
         else
-            print_error "✗ Migration completed but table count still low ($NEW_COUNT)"
-            print_error "Database setup incomplete - manual intervention required"
-            echo "$MIGRATION_OUTPUT" > /tmp/migration-error.log
-            print_info "  Migration output saved to /tmp/migration-error.log"
-            exit 1
+            print_warning "⚠ Database schema applied but table count is low ($NEW_COUNT tables)"
+            print_info "Check logs: /tmp/db-migration.log"
         fi
     else
-        print_error "✗ Failed to create database tables"
-        echo "$MIGRATION_OUTPUT" > /tmp/migration-error.log
-        print_info "  Migration output saved to /tmp/migration-error.log"
-        print_info "  Try manually: docker compose exec -T app npm run db:push"
-        exit 1
+        print_error "✗ Database schema application failed"
+        print_info "Error details:"
+        tail -10 /tmp/db-migration.log
+        print_info "Full log: /tmp/db-migration.log"
     fi
 fi
 

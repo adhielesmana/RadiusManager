@@ -438,51 +438,29 @@ wait_for_services() {
         exit 1
     fi
     
-    # Run database migrations to create/update tables
-    print_info "Creating database tables..."
+    # Run database migrations to create/update tables using raw SQL
+    print_info "Creating database tables using raw SQL..."
     
     # Wait a moment for app container to be fully ready
     sleep 3
     
-    # First create session table (required for express-session)
-    print_info "Creating session table..."
-    docker compose $COMPOSE_FILES exec -T postgres psql -U ispuser -d ispmanager << 'EOSQL' 2>/dev/null || true
-CREATE TABLE IF NOT EXISTS session (
-  sid varchar NOT NULL COLLATE "default",
-  sess json NOT NULL,
-  expire timestamp(6) NOT NULL,
-  PRIMARY KEY (sid)
-);
-CREATE INDEX IF NOT EXISTS IDX_session_expire ON session (expire);
-EOSQL
-    
-    # Run migration with auto-answer to prompts and --force flag (timeout 60 seconds max)
-    print_info "Running database migration (auto-answering prompts)..."
-    if timeout 60 bash -c "printf '1\n%.0s' {1..50} | docker compose $COMPOSE_FILES exec -T app npm run db:push -- --force" > /tmp/db-migration.log 2>&1; then
-        # Check if migration succeeded (accepts both "Changes applied" and "Everything is in sync")
-        if grep -qE "(Changes applied|Everything is in sync)" /tmp/db-migration.log; then
-            if grep -q "Everything is in sync" /tmp/db-migration.log; then
-                print_success "Database tables are up to date"
-            else
-                print_success "Database schema synchronized"
-            fi
+    # Apply comprehensive schema SQL (creates all tables, safe to run multiple times)
+    print_info "Applying database schema..."
+    if docker compose $COMPOSE_FILES exec -T app cat /app/create-missing-tables.sql | docker compose $COMPOSE_FILES exec -T postgres psql -U ispuser -d ispmanager > /tmp/db-migration.log 2>&1; then
+        # Count tables created
+        TABLE_COUNT=$(docker compose $COMPOSE_FILES exec -T postgres psql -U ispuser -d ispmanager -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ' || echo "0")
+        
+        if [ "$TABLE_COUNT" -ge "25" ]; then
+            print_success "Database schema applied successfully ($TABLE_COUNT tables)"
         else
-            print_warning "Database migration completed with warnings"
-            print_info "Output: $(tail -5 /tmp/db-migration.log)"
+            print_warning "Database schema applied but table count is low ($TABLE_COUNT tables)"
+            print_info "Check logs: /tmp/db-migration.log"
         fi
     else
-        # Check if it timed out
-        if [ $? -eq 124 ]; then
-            print_warning "Database migration timed out - will retry after app starts"
-            print_info "Tables will be created automatically on first app start"
-        else
-            print_warning "Database migration completed with warnings (app will handle it)"
-            print_info "Output: $(tail -5 /tmp/db-migration.log)"
-        fi
+        print_error "Database schema application failed"
+        print_info "Error details:"
+        tail -10 /tmp/db-migration.log
     fi
-    
-    # Clean up log file
-    rm -f /tmp/db-migration.log
     
     # Wait for ISP Manager application
     if [ "$SKIP_CURL_CHECK" = false ]; then
