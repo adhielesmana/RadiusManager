@@ -61,7 +61,10 @@ Key features and design decisions include:
   - **Health Checks**: Automatic container restart on failure
   - **Production-Ready**: Runs in production mode (Node.js 20, npm start)
   - **Privilege-aware**: Root checks with clear messaging, no inline sudo commands
-  - **Database Migration**: Production deployments use raw SQL table creation (bypassing Drizzle's interactive prompts) via `create-missing-tables.sql` for reliable unattended deployment
+  - **Database Migration**: Production deployments use raw SQL table creation (bypassing Drizzle's interactive prompts) via `create-missing-tables.sql` for reliable unattended deployment.
+    - **Current Approach** (v1 - Production Ready): Raw SQL with `IF NOT EXISTS` statements creates all 26+ tables idempotently. Solves Drizzle's interactive prompt freezing during deployment.
+    - **Limitations**: Only handles fresh installations and missing tables. Future schema changes (new columns, indexes, constraints) require manual SQL updates or a versioned migration system.
+    - **Future Improvement Path**: Implement sequential versioned migrations (e.g., `migrations/0001_*.sql`, `0002_*.sql`) with a tracking table to support incremental schema updates during application upgrades while maintaining idempotent deployment.
 
 ## External Dependencies
 - **PostgreSQL**: Relational database for application and FreeRADIUS data.
