@@ -69,8 +69,10 @@ update_env_key() {
     local env_file=".env"
     
     if grep -q "^${key}=" "$env_file" 2>/dev/null; then
-        # Key exists, update it
-        sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+        # Key exists, remove old line and append new one
+        grep -v "^${key}=" "$env_file" > "$env_file.tmp"
+        echo "${key}=${value}" >> "$env_file.tmp"
+        mv "$env_file.tmp" "$env_file"
     else
         # Key doesn't exist, append it
         echo "${key}=${value}" >> "$env_file"
