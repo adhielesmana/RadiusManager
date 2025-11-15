@@ -61,6 +61,7 @@ Key features and design decisions include:
   - **Health Checks**: Automatic container restart on failure
   - **Production-Ready**: Runs in production mode (Node.js 20, npm start)
   - **Privilege-aware**: Root checks with clear messaging, no inline sudo commands
+  - **Database Migration**: Production deployments use raw SQL table creation (bypassing Drizzle's interactive prompts) via `create-missing-tables.sql` for reliable unattended deployment
 
 ## External Dependencies
 - **PostgreSQL**: Relational database for application and FreeRADIUS data.
