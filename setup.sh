@@ -314,8 +314,11 @@ main() {
         systemctl start nginx
         mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /var/www/html
         
+        # Add sites-enabled include to nginx.conf if not present
         if ! grep -q "sites-enabled" /etc/nginx/nginx.conf; then
-            sed -i '/http {/a \    include /etc/nginx/sites-enabled/*;' /etc/nginx/nginx.conf
+            # Use a safer approach - insert after 'http {' line using awk
+            awk '/http {/ { print; print "    include /etc/nginx/sites-enabled/*;"; next }1' /etc/nginx/nginx.conf > /etc/nginx/nginx.conf.tmp
+            mv /etc/nginx/nginx.conf.tmp /etc/nginx/nginx.conf
         fi
         
         systemctl reload nginx
@@ -450,12 +453,19 @@ main() {
         if check_nginx_config_exists "$APP_DOMAIN"; then
             print_info "Nginx config for $APP_DOMAIN already exists"
             
-            # Update upstream port if different
+            # Check if port needs updating by extracting current port
             if [ -f "/etc/nginx/sites-available/$APP_DOMAIN" ]; then
-                CURRENT_PORT=$(grep "proxy_pass.*localhost:" "/etc/nginx/sites-available/$APP_DOMAIN" | sed -n 's/.*localhost:\([0-9]*\).*/\1/p' | head -1)
-                if [ "$CURRENT_PORT" != "$APP_PORT" ]; then
+                CURRENT_PORT=$(grep -o "localhost:[0-9]*" "/etc/nginx/sites-available/$APP_DOMAIN" | head -1 | cut -d: -f2)
+                if [ -n "$CURRENT_PORT" ] && [ "$CURRENT_PORT" != "$APP_PORT" ]; then
                     print_info "Updating port from $CURRENT_PORT to $APP_PORT"
-                    sed -i "s/localhost:$CURRENT_PORT/localhost:$APP_PORT/g" "/etc/nginx/sites-available/$APP_DOMAIN"
+                    
+                    # Regenerate config instead of using sed - much safer
+                    if [ -f "/etc/letsencrypt/live/$APP_DOMAIN/fullchain.pem" ]; then
+                        generate_nginx_config "$APP_DOMAIN" "$APP_PORT" "true"
+                    else
+                        generate_nginx_config "$APP_DOMAIN" "$APP_PORT" "false"
+                    fi
+                    
                     systemctl reload nginx
                     print_success "Port updated in nginx config"
                 fi
